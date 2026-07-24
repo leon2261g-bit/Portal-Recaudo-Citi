@@ -436,7 +436,7 @@ if st.session_state.rol == "presidencia":
         st.plotly_chart(fig_mes, use_container_width=True)
 
 # ==========================================
-# VISTA 2: DIRECTOR (CORREGIDA Y SINCRONIZADA)
+# VISTA 2: DIRECTOR
 # ==========================================
 elif st.session_state.rol == "director":
     st.title(f"✍️ Gestión de Recaudos por Mes - {st.session_state.nombre}")
@@ -809,7 +809,6 @@ elif st.session_state.rol == "admin":
                     if st.button("✅ Sí, reiniciar", type="primary", use_container_width=True):
                         st.session_state.base_meses_db = inicializar_base_datos()
                         st.session_state.confirmar_reinicio = False
-                        st.success("Base de datos reiniciada correctamente.")
                         st.rerun()
 
                 with col_alert2:
