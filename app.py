@@ -809,7 +809,7 @@ elif st.session_state.rol == "admin":
                     if st.button("✅ Sí, reiniciar", type="primary", use_container_width=True):
                         st.session_state.base_meses_db = inicializar_base_datos()
                         st.session_state.confirmar_reinicio = False
-                        st.success("¡Base de datos reiniciada con éxito!")
+                        st.success("Base de datos reiniciada correctamente.")
                         st.rerun()
 
                 with col_alert2:
