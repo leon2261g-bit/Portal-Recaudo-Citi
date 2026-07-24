@@ -16,8 +16,8 @@ st.set_page_config(
 # --- FORMATOS FINANCIEROS Y NUMÉRICOS ---
 def formato_pesos(val):
     if pd.isna(val) or val is None:
-        return "$ 0"
-    return f"$ {val:,.0f}".replace(",", ".")
+        return "$0"
+    return f"${val:,.0f}".replace(",", ".")
 
 def formato_numero(val):
     if pd.isna(val) or val is None:
@@ -79,11 +79,11 @@ MESES_ESPECIFICOS = {
     "Popular 3tc Citi 2022": [("NOVIEMBRE 2022", 217450011, 53)],
     "Popular 3tc Citi 2023": [("FEBRERO 2023", 252750319, 62)],
     "Popular 2026":           [("ENERO 2026", 330411006, 73)],
-    "FICH":                  [("NOVIEMBRE 2021", 199530664, 60)],
-    "Coovitel Propia":       [("SEPTIEMBRE 2022", 214162693, 50)],
-    "Coovitel Propia 2":     [("ABRIL 2023", 172146722, 40)],
-    "Popular 1":             [("DICIEMBRE 2021", 156811901, 37)],
-    "Popular 2":             [("OCTUBRE 2022", 200000000, 45)]
+    "FICH":                   [("NOVIEMBRE 2021", 199530664, 60)],
+    "Coovitel Propia":        [("SEPTIEMBRE 2022", 214162693, 50)],
+    "Coovitel Propia 2":      [("ABRIL 2023", 172146722, 40)],
+    "Popular 1":              [("DICIEMBRE 2021", 156811901, 37)],
+    "Popular 2":              [("OCTUBRE 2022", 200000000, 45)]
 }
 
 TODAS_LAS_CARTERAS = [
@@ -202,7 +202,12 @@ if st.session_state.rol == "presidencia":
     m4.metric("% Efectividad Global", f"{efect_global:.2f}%")
     
     st.markdown("---")
-    p_tab1, p_tab2, p_tab3 = st.tabs(["🏆 Participación por Director", "📊 Recaudo por Cartera", "📅 Consolidado Mes x Mes"])
+    p_tab1, p_tab2, p_tab3, p_tab4 = st.tabs([
+        "🏆 Participación por Director", 
+        "📊 Recaudo por Cartera", 
+        "📈 Análisis por Cartera y Mes", 
+        "📅 Consolidado Mes x Mes"
+    ])
     
     with p_tab1:
         st.subheader("🥇 Rendimiento y Participación por Director")
@@ -249,6 +254,22 @@ if st.session_state.rol == "presidencia":
         st.plotly_chart(fig_cart_bar, use_container_width=True)
 
     with p_tab3:
+        st.subheader("📈 Comportamiento Mensual por Cartera Específica")
+        cartera_pres = st.selectbox("Seleccione una Cartera para Analizar:", TODAS_LAS_CARTERAS, key="pres_cart_select")
+        df_sub_cart = df_all[df_all['CARTERA'] == cartera_pres].groupby('MES', as_index=False).agg({
+            'RECAUDO': 'sum', 'PROYECCION': 'sum', 'CAPITAL': 'sum'
+        })
+        df_sub_cart['MES_BOLD'] = df_sub_cart['MES'].apply(lambda x: f"<b>{x}</b>")
+        
+        fig_sub_cart = px.bar(
+            df_sub_cart, x='MES_BOLD', y=['RECAUDO', 'PROYECCION'], barmode='group',
+            title=f"<b>Comportamiento Mensual de Recaudo vs Proyección - {cartera_pres}</b>",
+            color_discrete_map={'RECAUDO': '#2563eb', 'PROYECCION': '#f59e0b'},
+            labels={'value': 'Monto ($)', 'variable': 'Tipo'}
+        )
+        st.plotly_chart(fig_sub_cart, use_container_width=True)
+
+    with p_tab4:
         st.subheader("📅 Consolidado General Mes por Mes")
         df_mes_tot = df_all.groupby('MES', as_index=False).agg({
             'CAPITAL': 'sum', 'RECAUDO': 'sum', 'PROYECCION': 'sum'
@@ -332,7 +353,12 @@ elif st.session_state.rol == "admin":
     st.title("📊 Panel Consolidado Gerencial")
     df_all = st.session_state.base_meses_db
     
-    t1, t2, t3, t4 = st.tabs(["📈 Dashboard Consolidado", "📅 Consolidado Mes x Mes", "📋 Base General", "⚙️ Configuración / Admin"])
+    t1, t2, t3, t4 = st.tabs([
+        "📈 Dashboard Consolidado", 
+        "📅 Consolidado Mes x Mes", 
+        "📋 Base General",
+        "⚙️ Configuración / Admin"
+    ])
     
     with t1:
         m1, m2, m3, m4 = st.columns(4)
@@ -362,6 +388,23 @@ elif st.session_state.rol == "admin":
             fig2 = px.pie(df_dir_g, names='DIRECTOR_BOLD', values='RECAUDO', hole=0.4, color_discrete_sequence=PALETA_VIVA)
             fig2.update_traces(textposition='inside', textinfo='percent+label', textfont=dict(size=13, color='white', family='Arial Black'))
             st.plotly_chart(fig2, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("📈 Detalle Mensual de Recaudo por Cartera")
+        cartera_admin_sel = st.selectbox("Filtrar Comportamiento Mensual por Cartera:", TODAS_LAS_CARTERAS, key="admin_cart_select")
+        
+        df_cart_mes_admin = df_all[df_all['CARTERA'] == cartera_admin_sel].groupby('MES', as_index=False).agg({
+            'RECAUDO': 'sum', 'PROYECCION': 'sum'
+        })
+        df_cart_mes_admin['MES_BOLD'] = df_cart_mes_admin['MES'].apply(lambda x: f"<b>{x}</b>")
+        
+        fig_admin_cart = px.bar(
+            df_cart_mes_admin, x='MES_BOLD', y=['RECAUDO', 'PROYECCION'], barmode='group',
+            title=f"<b>Evolución Mensual: {cartera_admin_sel}</b>",
+            color_discrete_map={'RECAUDO': '#059669', 'PROYECCION': '#3b82f6'},
+            labels={'value': 'Monto ($)', 'variable': 'Estado'}
+        )
+        st.plotly_chart(fig_admin_cart, use_container_width=True)
 
     with t2:
         st.subheader("📅 Consolidado Mes x Mes de Toda la Operación")
@@ -427,7 +470,6 @@ elif st.session_state.rol == "admin":
             st.markdown("### ⚠️ Reinicio de Base de Datos y Backup")
             st.caption("Esta acción restablecerá todas las metas, recaudos y proyecciones a cero.")
 
-            # Estado local para manejar el diálogo de alerta
             if 'confirmar_reinicio' not in st.session_state:
                 st.session_state.confirmar_reinicio = False
 
@@ -441,9 +483,7 @@ elif st.session_state.rol == "admin":
                 
                 with col_alert1:
                     if st.button("✅ SÍ, REINICIAR (Crear Backup)", use_container_width=True):
-                        # Guardar backup
                         st.session_state.backup_db = st.session_state.base_meses_db.copy()
-                        # Reiniciar base
                         st.session_state.base_meses_db = inicializar_base_datos()
                         st.session_state.confirmar_reinicio = False
                         st.success("¡Base de datos reiniciada con éxito! Backup guardado.")
@@ -454,7 +494,6 @@ elif st.session_state.rol == "admin":
                         st.session_state.confirmar_reinicio = False
                         st.rerun()
 
-            # Opción de Restaurar Backup
             if st.session_state.backup_db is not None:
                 st.markdown("---")
                 st.info("📦 Existe una copia de respaldo (Backup) guardada.")
