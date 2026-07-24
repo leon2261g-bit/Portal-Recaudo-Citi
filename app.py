@@ -109,6 +109,20 @@ MESES_ESPECIFICOS = {
         ("ABRIL 2024", 210000000, 52),
         ("DICIEMBRE 2024", 250000000, 65),
     ],
+    "Popular 2tc 2025": [  # <-- AQUÍ SE DEFINEN LOS MESES DE 2025
+        ("ENERO 2025", 225000000, 56),
+        ("FEBRERO 2025", 235000000, 59),
+        ("MARZO 2025", 245000000, 61),
+        ("ABRIL 2025", 215000000, 53),
+        ("MAYO 2025", 220000000, 54),
+        ("JUNIO 2025", 230000000, 57),
+        ("JULIO 2025", 240000000, 60),
+        ("AGOSTO 2025", 250000000, 62),
+        ("SEPTIEMBRE 2025", 255000000, 63),
+        ("OCTUBRE 2025", 260000000, 65),
+        ("NOVIEMBRE 2025", 265000000, 66),
+        ("DICIEMBRE 2025", 270000000, 68),
+    ],
     "Av Villas 2023": [
         ("ENERO 2023", 190000000, 48),
         ("MARZO 2023", 210000000, 50),
@@ -134,6 +148,7 @@ TODAS_LAS_CARTERAS = [
     "Popular 2026",
     "Popular 2tc 2023",
     "Popular 2tc 2024",
+    "Popular 2tc 2025",
     "Av Villas 2023",
     "Av Villas 2024",
     "FICH",
@@ -141,7 +156,6 @@ TODAS_LAS_CARTERAS = [
     "Coovitel Propia 2",
     "Popular 1",
     "Popular 2",
-    "Popular 2tc 2025",
 ]
 
 DIRECTORES = ["ADRIANA", "CARLOS", "JEIMMY", "ERIKA", "MIGUEL"]
@@ -422,30 +436,28 @@ if st.session_state.rol == "presidencia":
         st.plotly_chart(fig_mes, use_container_width=True)
 
 # ==========================================
-# VISTA 2: DIRECTOR (NORMALIZACIÓN Y GUARDADO FIABLE)
+# VISTA 2: DIRECTOR (CORREGIDA Y SINCRONIZADA)
 # ==========================================
 elif st.session_state.rol == "director":
     st.title(f"✍️ Gestión de Recaudos por Mes - {st.session_state.nombre}")
 
     director_actual = st.session_state.nombre.strip().upper()
-    df_full = st.session_state.base_meses_db
+    df_full = st.session_state.base_meses_db.copy()
 
-    # Normalización del campo DIRECTOR para comparación insensible a diferencias de formato
+    # Normalización del campo DIRECTOR y CARTERA
     df_full["DIRECTOR_NORMALIZADO"] = (
         df_full["DIRECTOR"]
         .astype(str)
         .apply(lambda x: x.split("(")[0].strip().upper() if pd.notna(x) else "")
     )
+    df_full["CARTERA_NORMALIZADA"] = df_full["CARTERA"].astype(str).str.strip()
 
     df_director = df_full[df_full["DIRECTOR_NORMALIZADO"] == director_actual]
-    carteras_director = df_director["CARTERA"].dropna().unique().tolist()
+    carteras_director = df_director["CARTERA_NORMALIZADA"].dropna().unique().tolist()
 
     if not carteras_director:
         st.warning(
             f"⚠️ No hay carteras asociadas al usuario **{director_actual}** en la base actual."
-        )
-        st.info(
-            "Si el Gerente cargó un archivo Excel, asegúrese de que el nombre del Director coincida exactamente."
         )
     else:
         tab1, tab2 = st.tabs(["📅 Captura por Cartera y Mes", "📋 Resumen Completo"])
@@ -456,8 +468,9 @@ elif st.session_state.rol == "director":
             )
 
             mask_cartera = (
-                df_full["DIRECTOR_NORMALIZADO"] == director_actual
-            ) & (df_full["CARTERA"] == cartera_sel)
+                (df_full["DIRECTOR_NORMALIZADO"] == director_actual) &
+                (df_full["CARTERA_NORMALIZADA"] == cartera_sel)
+            )
             df_sub = df_full[mask_cartera].copy()
 
             c1, c2, c3 = st.columns(3)
@@ -486,7 +499,6 @@ elif st.session_state.rol == "director":
             if st.button("💾 Guardar Recaudos de la Cartera", type="primary", use_container_width=True):
                 filas_modificadas = 0
 
-                # Procesa los cambios fila por fila
                 for idx, row in df_editado.iterrows():
                     mes_val = str(row["MES"]).strip().upper()
                     rec = float(row["RECAUDO"]) if pd.notna(row["RECAUDO"]) else 0.0
@@ -515,7 +527,7 @@ elif st.session_state.rol == "director":
 
         with tab2:
             st.subheader("📋 Historial de Recaudo Completo")
-            mis_datos = df_director.drop(columns=["DIRECTOR_NORMALIZADO"], errors="ignore").copy()
+            mis_datos = df_director.drop(columns=["DIRECTOR_NORMALIZADO", "CARTERA_NORMALIZADA"], errors="ignore").copy()
             for col in ["CAPITAL", "RECAUDO", "PROYECCION", "ESTIMADO CIERRE"]:
                 if col in mis_datos.columns:
                     mis_datos[col] = mis_datos[col].apply(formato_pesos)
@@ -640,7 +652,6 @@ elif st.session_state.rol == "admin":
     with t4:
         st.subheader("⚙️ Panel Administrativo del Gerente General")
 
-        # --- MENSAJE PERSISTENTE DE ÉXITO TRAS RECARGAR ---
         if "mensaje_exito_carga" in st.session_state:
             st.success(st.session_state.mensaje_exito_carga)
             del st.session_state["mensaje_exito_carga"]
@@ -669,18 +680,11 @@ elif st.session_state.rol == "admin":
                     "# CLIENTES": 55,
                 },
                 {
-                    "DIRECTOR": "ADRIANA",
-                    "CARTERA": "Popular 2tc 2024",
-                    "MES": "FEBRERO 2024",
-                    "CAPITAL": 230000000,
-                    "# CLIENTES": 58,
-                },
-                {
-                    "DIRECTOR": "CARLOS",
-                    "CARTERA": "Av Villas 2024",
-                    "MES": "DICIEMBRE 2024",
-                    "CAPITAL": 260000000,
-                    "# CLIENTES": 64,
+                    "DIRECTOR": "ERIKA",
+                    "CARTERA": "Popular 2tc 2025",
+                    "MES": "ENERO 2025",
+                    "CAPITAL": 225000000,
+                    "# CLIENTES": 56,
                 },
             ])
             buffer = io.BytesIO()
@@ -700,7 +704,6 @@ elif st.session_state.rol == "admin":
 
             if st.button("🚀 Cargar y Procesar Base de Datos", type="primary", use_container_width=True):
                 try:
-                    # Garantizar lectura limpia desde el inicio
                     uploaded_base.seek(0)
 
                     if uploaded_base.name.endswith(".csv"):
@@ -744,12 +747,10 @@ elif st.session_state.rol == "admin":
                         )
                         df_cargado["ESTIMADO CIERRE"] = df_cargado["RECAUDO"] + df_cargado["PROYECCION"]
 
-                        # --- LIMPIEZA AUTOMÁTICA DE CACHÉ DE TABLAS EDITABLES ---
                         keys_a_eliminar = [k for k in st.session_state.keys() if k.startswith("editor_")]
                         for k in keys_a_eliminar:
                             del st.session_state[k]
 
-                        # Almacenar mensaje y base en session_state antes de recargar la vista
                         st.session_state.base_meses_db = df_cargado
                         st.session_state.mensaje_exito_carga = (
                             f"🎉 ¡Base de datos cargada con éxito! Se procesaron {len(df_cargado)} registros."
@@ -762,7 +763,6 @@ elif st.session_state.rol == "admin":
         st.markdown("---")
         col_adm1, col_adm2 = st.columns(2)
 
-        # MÓDULO 1: CAMBIO DE CONTRASEÑAS PERSISTENTE EN SESSION_STATE
         with col_adm1:
             st.markdown("### 🔑 Modificación de Contraseñas")
             usuario_a_modificar = st.selectbox(
@@ -783,7 +783,6 @@ elif st.session_state.rol == "admin":
                     st.session_state.usuarios_db[usuario_a_modificar]["hash"] = hacer_hash(nueva_clave)
                     st.success(f"¡Contraseña actualizada correctamente para **{st.session_state.usuarios_db[usuario_a_modificar]['nombre']}**!")
 
-        # MÓDULO 2: LOGO Y REINICIO CON RESPALDO
         with col_adm2:
             st.markdown("### 🖼️ Actualizar Logo Corporativo")
             uploaded_logo = st.file_uploader("Cargar nuevo logo", type=["png", "jpg", "jpeg"])
