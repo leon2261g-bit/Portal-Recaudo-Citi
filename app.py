@@ -109,7 +109,7 @@ MESES_ESPECIFICOS = {
         ("ABRIL 2024", 210000000, 52),
         ("DICIEMBRE 2024", 250000000, 65),
     ],
-    "Popular 2tc 2025": [  # <-- AQUÍ SE DEFINEN LOS MESES DE 2025
+    "Popular 2tc 2025": [
         ("ENERO 2025", 225000000, 56),
         ("FEBRERO 2025", 235000000, 59),
         ("MARZO 2025", 245000000, 61),
@@ -802,14 +802,14 @@ elif st.session_state.rol == "admin":
                     st.session_state.confirmar_reinicio = True
                     st.rerun()
             else:
-                st.warning("⚠️ ¿Está seguro de reiniciar la base de datos?")
+                st.warning("⚠️ ¿Está seguro de reiniciar la base de datos a sus valores predeterminados?")
                 col_alert1, col_alert2 = st.columns(2)
 
                 with col_alert1:
                     if st.button("✅ Sí, reiniciar", type="primary", use_container_width=True):
                         st.session_state.base_meses_db = inicializar_base_datos()
                         st.session_state.confirmar_reinicio = False
-                        st.success("Base de datos reiniciada a sus valores por defecto.")
+                        st.success("¡Base de datos reiniciada con éxito!")
                         st.rerun()
 
                 with col_alert2:
