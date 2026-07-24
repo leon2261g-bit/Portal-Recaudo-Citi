@@ -807,19 +807,13 @@ elif st.session_state.rol == "admin":
                 col_alert1, col_alert2 = st.columns(2)
 
                 with col_alert1:
-                    if st.button("✅ SÍ, REINICIAR", use_container_width=True):
-                        st.session_state.backup_db = st.session_state.base_meses_db.copy()
-                        
-                        # Limpiar caché de editores también al reiniciar
-                        keys_a_eliminar = [k for k in st.session_state.keys() if k.startswith("editor_")]
-                        for k in keys_a_eliminar:
-                            del st.session_state[k]
-
+                    if st.button("✅ Sí, reiniciar", type="primary", use_container_width=True):
                         st.session_state.base_meses_db = inicializar_base_datos()
                         st.session_state.confirmar_reinicio = False
+                        st.success("Base de datos reiniciada a sus valores por defecto.")
                         st.rerun()
 
                 with col_alert2:
-                    if st.button("❌ CANCELAR", use_container_width=True):
+                    if st.button("❌ Cancelar", use_container_width=True):
                         st.session_state.confirmar_reinicio = False
                         st.rerun()
