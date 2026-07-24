@@ -7,7 +7,7 @@ import plotly.express as px
 
 # 1. Configuración de la página
 st.set_page_config(
-    page_title="Portal Digital de Recaudo",
+    page_title="Portal Digital de Recaudo - Citi Summa",
     page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -29,17 +29,17 @@ st.markdown("""
     <style>
     .main { background-color: #f8fafc; }
     h1 { color: #0f172a; font-family: 'Segoe UI', Roboto, sans-serif; font-weight: 800; }
-    h2, h3 { color: #1e293b; font-weight: 600; }
+    h2, h3 { color: #1e293b; font-weight: 700; }
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
-        border: 1px solid #e2e8f0;
+        border: 1px solid #cbd5e1;
         border-radius: 16px;
         padding: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
         border-top: 4px solid #2563eb;
     }
-    [data-testid="stMetricLabel"] { color: #64748b; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; }
-    [data-testid="stMetricValue"] { color: #0f172a; font-size: 1.6rem !important; font-weight: 800; }
+    [data-testid="stMetricLabel"] { color: #475569; font-size: 0.9rem; font-weight: 800; text-transform: uppercase; }
+    [data-testid="stMetricValue"] { color: #0f172a; font-size: 1.7rem !important; font-weight: 900; }
     [data-testid="stSidebar"] { background-color: #0f172a; }
     [data-testid="stSidebar"] h1, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p { color: #f8fafc !important; }
     </style>
@@ -61,47 +61,79 @@ def mostrar_logo_sidebar():
     if logo is not None:
         st.sidebar.image(logo, use_container_width=True)
     else:
-        st.sidebar.markdown("### 🏢 **Portal de Recaudo**")
+        st.sidebar.markdown("### 🏢 **Citi Summa**\n*Servicios Legales*")
     st.sidebar.markdown("---")
 
-# --- BASE DE DATOS INICIAL ---
-DATOS_EXCEL = [
-    {"CARTERA": "POPULAR 2TC CITI 2023", "DIRECTOR": "ADRIANA", "MES": "MARZO 2023", "CAPITAL": 217450011, "# CLIENTES": 53},
-    {"CARTERA": "POPULAR 2TC CITI 2023", "DIRECTOR": "ADRIANA", "MES": "ABRIL 2023", "CAPITAL": 252750319, "# CLIENTES": 62},
-    {"CARTERA": "POPULAR 2TC CITI 2023", "DIRECTOR": "ADRIANA", "MES": "MAYO 2023", "CAPITAL": 199530664, "# CLIENTES": 60},
-    {"CARTERA": "POPULAR 2TC CITI 2023", "DIRECTOR": "ADRIANA", "MES": "AGOSTO 2023", "CAPITAL": 330411006, "# CLIENTES": 73},
-    {"CARTERA": "POPULAR 2TC CITI 2023", "DIRECTOR": "ADRIANA", "MES": "SEPTIEMBRE 2023", "CAPITAL": 214162693, "# CLIENTES": 50},
-    {"CARTERA": "POPULAR 2TC CITI 2023", "DIRECTOR": "ADRIANA", "MES": "OCTUBRE 2023", "CAPITAL": 172146722, "# CLIENTES": 40},
-    {"CARTERA": "POPULAR 2TC CITI 2023", "DIRECTOR": "ADRIANA", "MES": "NOVIEMBRE 2023", "CAPITAL": 156811901, "# CLIENTES": 37},
-    
-    {"CARTERA": "POPULAR 2026", "DIRECTOR": "ADRIANA", "MES": "GENERAL", "CAPITAL": 3598011715, "# CLIENTES": 85},
-    {"CARTERA": "POPULAR 2026", "DIRECTOR": "CARLOS", "MES": "GENERAL", "CAPITAL": 7259787281, "# CLIENTES": 173},
-    {"CARTERA": "POPULAR 2026", "DIRECTOR": "JEIMMY", "MES": "GENERAL", "CAPITAL": 7479973316, "# CLIENTES": 173},
-    {"CARTERA": "POPULAR 2026", "DIRECTOR": "ERIKA", "MES": "GENERAL", "CAPITAL": 0, "# CLIENTES": 0},
-    {"CARTERA": "POPULAR 2026", "DIRECTOR": "MIGUEL", "MES": "GENERAL", "CAPITAL": 10896210066, "# CLIENTES": 259},
+# --- DEFINICIÓN DE MESES POR DEFECTO ---
+MESES_ESTANDAR = [
+    ("MARZO 2023", 217450011, 53),
+    ("ABRIL 2023", 252750319, 62),
+    ("MAYO 2023", 199530664, 60),
+    ("AGOSTO 2023", 330411006, 73),
+    ("SEPTIEMBRE 2023", 214162693, 50),
+    ("OCTUBRE 2023", 172146722, 40),
+    ("NOVIEMBRE 2023", 156811901, 37)
 ]
 
-if 'base_meses_db' not in st.session_state:
-    df_init = pd.DataFrame(DATOS_EXCEL)
-    df_init['RECAUDO'] = 0.0
-    df_init['PROYECCION'] = 0.0
-    df_init['% EFECTIVIDAD'] = 0.0
-    df_init['ESTIMADO CIERRE'] = 0.0
-    st.session_state.base_meses_db = df_init
+MESES_ESPECIFICOS = {
+    "Popular 3tc Citi 2022": [("NOVIEMBRE 2022", 217450011, 53)],
+    "Popular 3tc Citi 2023": [("FEBRERO 2023", 252750319, 62)],
+    "Popular 2026":           [("ENERO 2026", 330411006, 73)],
+    "FICH":                  [("NOVIEMBRE 2021", 199530664, 60)],
+    "Coovitel Propia":       [("SEPTIEMBRE 2022", 214162693, 50)],
+    "Coovitel Propia 2":     [("ABRIL 2023", 172146722, 40)],
+    "Popular 1":             [("DICIEMBRE 2021", 156811901, 37)],
+    "Popular 2":             [("OCTUBRE 2022", 200000000, 45)]
+}
 
-# --- AUTENTICACIÓN Y ROLES ---
+TODAS_LAS_CARTERAS = [
+    "Popular 3tc Citi 2022", "Popular 3tc Citi 2023", "Popular 2026", 
+    "Popular 2tc 2023", "Popular 2tc 2024", "Av Villas 2023", 
+    "Av Villas 2024", "FICH", "Coovitel Propia", "Coovitel Propia 2", 
+    "Popular 1", "Popular 2"
+]
+
+DIRECTORES = ["ADRIANA", "CARLOS", "JEIMMY", "ERIKA", "MIGUEL"]
+
+def inicializar_base_datos():
+    datos = []
+    for director in DIRECTORES:
+        for cartera in TODAS_LAS_CARTERAS:
+            meses_a_usar = MESES_ESPECIFICOS.get(cartera, MESES_ESTANDAR)
+            for mes, cap, cli in meses_a_usar:
+                datos.append({
+                    "CARTERA": cartera,
+                    "DIRECTOR": director,
+                    "MES": mes,
+                    "CAPITAL": cap,
+                    "# CLIENTES": cli,
+                    "RECAUDO": 0.0,
+                    "PROYECCION": 0.0,
+                    "% EFECTIVIDAD": 0.0,
+                    "ESTIMADO CIERRE": 0.0
+                })
+    return pd.DataFrame(datos)
+
+if 'base_meses_db' not in st.session_state:
+    st.session_state.base_meses_db = inicializar_base_datos()
+
+if 'backup_db' not in st.session_state:
+    st.session_state.backup_db = None
+
+# --- AUTENTICACIÓN Y BASE DE USUARIOS ---
 def hacer_hash(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
-USUARIOS = {
-    "presidencia": {"hash": hacer_hash("presidencia2026"), "nombre": "Presidencia Ejecutiva", "rol": "presidencia"},
-    "gerente":     {"hash": hacer_hash("gerencia2026"),    "nombre": "Gerente General",       "rol": "admin"},
-    "adriana":     {"hash": hacer_hash("adriana123"),       "nombre": "ADRIANA",               "rol": "director"},
-    "carlos":      {"hash": hacer_hash("carlos123"),        "nombre": "CARLOS",                "rol": "director"},
-    "jeimmy":      {"hash": hacer_hash("jeimmy123"),        "nombre": "JEIMMY",                "rol": "director"},
-    "erika":       {"hash": hacer_hash("erika123"),         "nombre": "ERIKA",                 "rol": "director"},
-    "miguel":      {"hash": hacer_hash("miguel123"),        "nombre": "MIGUEL",                "rol": "director"}
-}
+if 'usuarios_db' not in st.session_state:
+    st.session_state.usuarios_db = {
+        "presidencia": {"hash": hacer_hash("presidencia2026"), "nombre": "Presidencia Ejecutiva", "rol": "presidencia"},
+        "gerente":     {"hash": hacer_hash("gerencia2026"),    "nombre": "Gerente General",       "rol": "admin"},
+        "adriana":     {"hash": hacer_hash("adriana123"),       "nombre": "ADRIANA",               "rol": "director"},
+        "carlos":      {"hash": hacer_hash("carlos123"),        "nombre": "CARLOS",                "rol": "director"},
+        "jeimmy":      {"hash": hacer_hash("jeimmy123"),        "nombre": "JEIMMY",                "rol": "director"},
+        "erika":       {"hash": hacer_hash("erika123"),         "nombre": "ERIKA",                 "rol": "director"},
+        "miguel":      {"hash": hacer_hash("miguel123"),        "nombre": "MIGUEL",                "rol": "director"}
+    }
 
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
@@ -114,56 +146,50 @@ if not st.session_state.autenticado:
         st.write("")
         logo_login = cargar_logo()
         if logo_login is not None:
-            st.image(logo_login, width=220)
+            st.image(logo_login, use_container_width=True)
+        else:
+            st.title("🏛️ CITI SUMMA")
+            st.caption("SERVICIOS LEGALES")
         
-        st.title("🔐 Portal Digital de Recaudo")
+        st.markdown("### 🔐 Portal Digital de Recaudo")
         st.caption("Ingrese sus credenciales de acceso:")
         
         user_input = st.text_input("Usuario:").strip().lower()
         pass_input = st.text_input("Contraseña:", type="password")
         
         if st.button("Iniciar Sesión", type="primary", use_container_width=True):
-            if user_input in USUARIOS and USUARIOS[user_input]["hash"] == hacer_hash(pass_input):
+            usuarios = st.session_state.usuarios_db
+            if user_input in usuarios and usuarios[user_input]["hash"] == hacer_hash(pass_input):
                 st.session_state.autenticado = True
                 st.session_state.usuario = user_input
-                st.session_state.rol = USUARIOS[user_input]["rol"]
-                st.session_state.nombre = USUARIOS[user_input]["nombre"]
+                st.session_state.rol = usuarios[user_input]["rol"]
+                st.session_state.nombre = usuarios[user_input]["nombre"]
                 st.rerun()
             else:
                 st.error("Usuario o contraseña incorrectos")
     st.stop()
 
-# --- MENÚ LATERAL COMÚN ---
+# --- MENÚ LATERAL ---
 mostrar_logo_sidebar()
 st.sidebar.title(f"👤 {st.session_state.nombre}")
 st.sidebar.caption(f"Rol: **{st.session_state.rol.upper()}**")
 st.sidebar.markdown("---")
 
-# Exclusivo de Gerente General: Carga y Administración del Logo
-if st.session_state.rol == "admin":
-    with st.sidebar.expander("⚙️ Exclusivo Gerente: Configurar Logo"):
-        uploaded_logo = st.file_uploader("Actualizar logo corporativo", type=["png", "jpg", "jpeg"])
-        if uploaded_logo is not None:
-            img = Image.open(uploaded_logo)
-            img.save(LOGO_PATH)
-            st.success("¡Logo guardado de forma permanente!")
-            st.rerun()
-    st.sidebar.markdown("---")
-
 if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.autenticado = False
     st.rerun()
 
+PALETA_VIVA = ['#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#059669', '#0284C7', '#D97706', '#DC2626', '#4F46E5', '#0D9488']
+
 # ==========================================
-# VISTA 1: PRESIDENCIA (Estratégica & Rankings)
+# VISTA 1: PRESIDENCIA
 # ==========================================
 if st.session_state.rol == "presidencia":
     st.title("🏛️ Panel de Control Presidencial")
-    st.caption("Vista ejecutiva de alto nivel, ranking de rendimiento y tendencias por cartera")
+    st.caption("Vista ejecutiva de alto nivel, participaciones de mercado y tendencias globales")
     
     df_all = st.session_state.base_meses_db.copy()
     
-    # Métricas Globales
     cap_tot = df_all['CAPITAL'].sum()
     rec_tot = df_all['RECAUDO'].sum()
     proy_tot = df_all['PROYECCION'].sum()
@@ -176,91 +202,64 @@ if st.session_state.rol == "presidencia":
     m4.metric("% Efectividad Global", f"{efect_global:.2f}%")
     
     st.markdown("---")
-    
-    p_tab1, p_tab2 = st.tabs(["🏆 Ranking por Director", "📈 Recaudo por Cartera y Mes"])
+    p_tab1, p_tab2, p_tab3 = st.tabs(["🏆 Participación por Director", "📊 Recaudo por Cartera", "📅 Consolidado Mes x Mes"])
     
     with p_tab1:
-        st.subheader("🥇 Ranking de Gestión por Director")
-        
-        # Agrupación por Director
+        st.subheader("🥇 Rendimiento y Participación por Director")
         df_dir = df_all.groupby('DIRECTOR', as_index=False).agg({
-            'CAPITAL': 'sum',
-            'RECAUDO': 'sum',
-            'PROYECCION': 'sum',
-            '# CLIENTES': 'sum'
+            'CAPITAL': 'sum', 'RECAUDO': 'sum', 'PROYECCION': 'sum'
         })
+        df_dir['DIRECTOR_BOLD'] = df_dir['DIRECTOR'].apply(lambda x: f"<b>{x}</b>")
         
-        df_dir['% EFECTIVIDAD'] = df_dir.apply(
-            lambda r: (r['RECAUDO'] / r['CAPITAL'] * 100) if r['CAPITAL'] > 0 else 0.0, axis=1
-        )
-        
-        # Ordenar para Ranking
-        df_dir = df_dir.sort_values(by='RECAUDO', ascending=False).reset_index(drop=True)
-        
-        medallas = ["🥇 1°", "🥈 2°", "🥉 3°"] + [f"  {i+1}°" for i in range(3, len(df_dir))]
-        df_dir['POSICIÓN'] = medallas[:len(df_dir)]
-        
-        col_rank_t, col_rank_g = st.columns([1.1, 1])
-        
-        with col_rank_t:
-            df_rank_print = df_dir[['POSICIÓN', 'DIRECTOR', 'RECAUDO', 'CAPITAL', '% EFECTIVIDAD']].copy()
-            df_rank_print['RECAUDO'] = df_rank_print['RECAUDO'].apply(formato_pesos)
-            df_rank_print['CAPITAL'] = df_rank_print['CAPITAL'].apply(formato_pesos)
-            df_rank_print['% EFECTIVIDAD'] = df_rank_print['% EFECTIVIDAD'].apply(lambda x: f"{x:.2f}%")
-            
-            st.dataframe(df_rank_print, use_container_width=True, hide_index=True)
-            
-        with col_rank_g:
-            fig_rank = px.bar(
-                df_dir,
-                x='RECAUDO',
-                y='DIRECTOR',
-                orientation='h',
-                text_auto='.2s',
-                title="Líderes de Recaudo ($)",
-                color='RECAUDO',
-                color_continuous_scale='Blues'
+        col_rank_g1, col_rank_g2 = st.columns([1, 1])
+        with col_rank_g1:
+            fig_pie_dir = px.pie(
+                df_dir, names='DIRECTOR_BOLD', values='RECAUDO', hole=0.45,
+                title="<b>% Participación de Recaudo por Director</b>",
+                color_discrete_sequence=PALETA_VIVA
             )
-            fig_rank.update_layout(yaxis={'categoryorder': 'total ascending'}, showlegend=False)
-            st.plotly_chart(fig_rank, use_container_width=True)
+            fig_pie_dir.update_traces(
+                textposition='inside', textinfo='percent+label',
+                textfont=dict(size=14, color='white', family='Arial Black'),
+                marker=dict(line=dict(color='#ffffff', width=2))
+            )
+            st.plotly_chart(fig_pie_dir, use_container_width=True)
+
+        with col_rank_g2:
+            fig_rank_bar = px.bar(
+                df_dir, x='RECAUDO', y='DIRECTOR_BOLD', orientation='h', text_auto='.2s',
+                title="<b>Monto Total Recaudado ($) por Director</b>", color='DIRECTOR_BOLD',
+                color_discrete_sequence=PALETA_VIVA
+            )
+            fig_rank_bar.update_layout(
+                yaxis={'categoryorder': 'total ascending', 'tickfont': dict(size=13, color='black')},
+                showlegend=False
+            )
+            st.plotly_chart(fig_rank_bar, use_container_width=True)
 
     with p_tab2:
-        st.subheader("📊 Comportamiento de Recaudo por Cartera y Mes")
-        
-        df_cart_mes = df_all.groupby(['CARTERA', 'MES'], as_index=False).agg({
-            'RECAUDO': 'sum',
-            'PROYECCION': 'sum',
-            'CAPITAL': 'sum'
-        })
-        
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            carteras_disponibles = ["TODAS"] + list(df_cart_mes['CARTERA'].unique())
-            cartera_filtro = st.selectbox("Filtrar por Cartera:", carteras_disponibles)
-        
-        if cartera_filtro != "TODAS":
-            df_chart_data = df_cart_mes[df_cart_mes['CARTERA'] == cartera_filtro]
-        else:
-            df_chart_data = df_cart_mes
-            
-        fig_cart_mes = px.bar(
-            df_chart_data,
-            x='MES',
-            y='RECAUDO',
-            color='CARTERA',
-            barmode='group',
-            title=f"Recaudo Histórico y Proyectado por Mes ({cartera_filtro})",
-            labels={'RECAUDO': 'Recaudo ($)', 'MES': 'Periodo / Mes'},
-            color_discrete_sequence=px.colors.qualitative.Pastel
+        st.subheader("📊 Recaudo General por Cartera")
+        df_cart_tot = df_all.groupby('CARTERA', as_index=False).agg({'RECAUDO': 'sum'})
+        df_cart_tot['CARTERA_BOLD'] = df_cart_tot['CARTERA'].apply(lambda x: f"<b>{x}</b>")
+        fig_cart_bar = px.bar(
+            df_cart_tot, x='CARTERA_BOLD', y='RECAUDO', color='CARTERA_BOLD', text_auto='.2s',
+            title="<b>Recaudo Total ($) por Cada Cartera</b>", color_discrete_sequence=px.colors.qualitative.Vivid
         )
-        st.plotly_chart(fig_cart_mes, use_container_width=True)
-        
-        st.caption("Detalle Completo por Cartera y Mes:")
-        df_cm_print = df_chart_data.copy()
-        df_cm_print['RECAUDO'] = df_cm_print['RECAUDO'].apply(formato_pesos)
-        df_cm_print['PROYECCION'] = df_cm_print['PROYECCION'].apply(formato_pesos)
-        df_cm_print['CAPITAL'] = df_cm_print['CAPITAL'].apply(formato_pesos)
-        st.dataframe(df_cm_print, use_container_width=True, hide_index=True)
+        fig_cart_bar.update_layout(showlegend=False, xaxis=dict(tickangle=-45, tickfont=dict(size=13, color='black')))
+        st.plotly_chart(fig_cart_bar, use_container_width=True)
+
+    with p_tab3:
+        st.subheader("📅 Consolidado General Mes por Mes")
+        df_mes_tot = df_all.groupby('MES', as_index=False).agg({
+            'CAPITAL': 'sum', 'RECAUDO': 'sum', 'PROYECCION': 'sum'
+        })
+        df_mes_tot['MES_BOLD'] = df_mes_tot['MES'].apply(lambda x: f"<b>{x}</b>")
+        fig_mes = px.bar(
+            df_mes_tot, x='MES_BOLD', y=['RECAUDO', 'PROYECCION'], barmode='group',
+            title="<b>Evolución de Recaudo vs Proyección Mes x Mes</b>",
+            color_discrete_map={'RECAUDO': '#2563eb', 'PROYECCION': '#f59e0b'}
+        )
+        st.plotly_chart(fig_mes, use_container_width=True)
 
 # ==========================================
 # VISTA 2: DIRECTOR
@@ -271,33 +270,27 @@ elif st.session_state.rol == "director":
     director_actual = st.session_state.nombre
     df_full = st.session_state.base_meses_db
     
-    carteras_director = df_full[df_full['DIRECTOR'] == director_actual]['CARTERA'].unique().tolist()
-    
     tab1, tab2 = st.tabs(["📅 Captura por Cartera y Mes", "📋 Resumen Completo"])
     
     with tab1:
-        cartera_sel = st.selectbox("Seleccione la Cartera a Gestionar:", carteras_director)
+        cartera_sel = st.selectbox("Seleccione la Cartera a Gestionar:", TODAS_LAS_CARTERAS)
         
         filtro_meses = (df_full['DIRECTOR'] == director_actual) & (df_full['CARTERA'] == cartera_sel)
         df_sub = df_full[filtro_meses].copy()
         
-        tot_cap = df_sub['CAPITAL'].sum()
-        tot_cli = df_sub['# CLIENTES'].sum()
-        tot_rec = df_sub['RECAUDO'].sum()
-        
         c1, c2, c3 = st.columns(3)
-        c1.metric("Capital Asignado", formato_pesos(tot_cap))
-        c2.metric("Clientes Totales", formato_numero(tot_cli))
-        c3.metric("Recaudo Acumulado", formato_pesos(tot_rec))
+        c1.metric("Capital Asignado", formato_pesos(df_sub['CAPITAL'].sum()))
+        c2.metric("Clientes Totales", formato_numero(df_sub['# CLIENTES'].sum()))
+        c3.metric("Recaudo Acumulado", formato_pesos(df_sub['RECAUDO'].sum()))
         
         st.markdown("---")
         st.subheader(f"Desglose Mensual: **{cartera_sel}**")
-        st.caption("Ingresa los valores de **Recaudo** y **Proyección** en las celdas de la tabla:")
         
         df_editado = st.data_editor(
             df_sub[['MES', 'CAPITAL', '# CLIENTES', 'RECAUDO', 'PROYECCION']],
             disabled=['MES', 'CAPITAL', '# CLIENTES'],
             use_container_width=True,
+            key=f"editor_{director_actual}_{cartera_sel}",
             column_config={
                 "MES": st.column_config.TextColumn("Mes / Periodo"),
                 "CAPITAL": st.column_config.NumberColumn("Capital ($)", format="$ %,d"),
@@ -315,14 +308,11 @@ elif st.session_state.rol == "director":
                 proy = float(row['PROYECCION'])
                 cap = float(row['CAPITAL'])
                 
-                efect = (rec / cap * 100) if cap > 0 else 0.0
-                est_cierre = rec + proy
-                
                 cond = (df_full['DIRECTOR'] == director_actual) & (df_full['CARTERA'] == cartera_sel) & (df_full['MES'] == mes_val)
                 st.session_state.base_meses_db.loc[cond, 'RECAUDO'] = rec
                 st.session_state.base_meses_db.loc[cond, 'PROYECCION'] = proy
-                st.session_state.base_meses_db.loc[cond, '% EFECTIVIDAD'] = efect
-                st.session_state.base_meses_db.loc[cond, 'ESTIMADO CIERRE'] = est_cierre
+                st.session_state.base_meses_db.loc[cond, '% EFECTIVIDAD'] = (rec / cap * 100) if cap > 0 else 0.0
+                st.session_state.base_meses_db.loc[cond, 'ESTIMADO CIERRE'] = rec + proy
                 
             st.success(f"¡Valores de {cartera_sel} guardados con éxito!")
             st.rerun()
@@ -330,24 +320,19 @@ elif st.session_state.rol == "director":
     with tab2:
         st.subheader("📋 Historial de Recaudo Completo")
         mis_datos = st.session_state.base_meses_db[st.session_state.base_meses_db['DIRECTOR'] == director_actual].copy()
-        
-        df_mostrar = mis_datos.copy()
         for col in ['CAPITAL', 'RECAUDO', 'PROYECCION', 'ESTIMADO CIERRE']:
-            df_mostrar[col] = df_mostrar[col].apply(formato_pesos)
-        df_mostrar['# CLIENTES'] = df_mostrar['# CLIENTES'].apply(formato_numero)
-        df_mostrar['% EFECTIVIDAD'] = df_mostrar['% EFECTIVIDAD'].apply(lambda x: f"{x:.2f}%".replace(".", ","))
-        
-        st.dataframe(df_mostrar, use_container_width=True)
+            mis_datos[col] = mis_datos[col].apply(formato_pesos)
+        mis_datos['# CLIENTES'] = mis_datos['# CLIENTES'].apply(formato_numero)
+        st.dataframe(mis_datos, use_container_width=True)
 
 # ==========================================
 # VISTA 3: GERENTE GENERAL
 # ==========================================
 elif st.session_state.rol == "admin":
     st.title("📊 Panel Consolidado Gerencial")
-    
     df_all = st.session_state.base_meses_db
     
-    t1, t2 = st.tabs(["📈 Dashboard Consolidado", "📋 Vista Detallada por Mes"])
+    t1, t2, t3, t4 = st.tabs(["📈 Dashboard Consolidado", "📅 Consolidado Mes x Mes", "📋 Base General", "⚙️ Configuración / Admin"])
     
     with t1:
         m1, m2, m3, m4 = st.columns(4)
@@ -357,42 +342,123 @@ elif st.session_state.rol == "admin":
         m4.metric("Total Clientes", formato_numero(df_all['# CLIENTES'].sum()))
         
         st.markdown("---")
-        
         col_g1, col_g2 = st.columns(2)
+        
         with col_g1:
             st.subheader("📊 Recaudo por Cartera")
             df_cart = df_all.groupby('CARTERA', as_index=False)['RECAUDO'].sum()
+            df_cart['CARTERA_BOLD'] = df_cart['CARTERA'].apply(lambda x: f"<b>{x}</b>")
             fig1 = px.bar(
-                df_cart, 
-                x='CARTERA', 
-                y='RECAUDO', 
-                color='CARTERA', 
-                color_discrete_sequence=px.colors.qualitative.Bold,
-                labels={'RECAUDO': 'Monto Recaudado ($)', 'CARTERA': 'Cartera'}
+                df_cart, x='CARTERA_BOLD', y='RECAUDO', color='CARTERA_BOLD',
+                text_auto='.2s', color_discrete_sequence=px.colors.qualitative.Dark24
             )
-            fig1.update_layout(showlegend=False)
+            fig1.update_layout(showlegend=False, xaxis=dict(tickangle=-45, tickfont=dict(size=12, color='black')))
             st.plotly_chart(fig1, use_container_width=True)
             
         with col_g2:
-            st.subheader("👥 Recaudo por Director")
-            df_dir = df_all.groupby('DIRECTOR', as_index=False)['RECAUDO'].sum()
-            fig2 = px.pie(
-                df_dir, 
-                names='DIRECTOR', 
-                values='RECAUDO', 
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Set2
-            )
-            fig2.update_traces(textinfo='percent+label')
+            st.subheader("🥧 Participación % por Director")
+            df_dir_g = df_all.groupby('DIRECTOR', as_index=False)['RECAUDO'].sum()
+            df_dir_g['DIRECTOR_BOLD'] = df_dir_g['DIRECTOR'].apply(lambda x: f"<b>{x}</b>")
+            fig2 = px.pie(df_dir_g, names='DIRECTOR_BOLD', values='RECAUDO', hole=0.4, color_discrete_sequence=PALETA_VIVA)
+            fig2.update_traces(textposition='inside', textinfo='percent+label', textfont=dict(size=13, color='white', family='Arial Black'))
             st.plotly_chart(fig2, use_container_width=True)
 
     with t2:
+        st.subheader("📅 Consolidado Mes x Mes de Toda la Operación")
+        df_mes_ger = df_all.groupby('MES', as_index=False).agg({'CAPITAL': 'sum', 'RECAUDO': 'sum', 'PROYECCION': 'sum'})
+        df_mes_ger['MES_BOLD'] = df_mes_ger['MES'].apply(lambda x: f"<b>{x}</b>")
+        fig_mes_g = px.bar(
+            df_mes_ger, x='MES_BOLD', y=['RECAUDO', 'PROYECCION'], barmode='group',
+            title="<b>Consolidado de Recaudo vs Proyección Mensual ($)</b>",
+            color_discrete_map={'RECAUDO': '#059669', 'PROYECCION': '#3b82f6'}
+        )
+        st.plotly_chart(fig_mes_g, use_container_width=True)
+
+    with t3:
         st.subheader("📋 Base General Desglosada")
-        
         df_mostrar_admin = df_all.copy()
         for col in ['CAPITAL', 'RECAUDO', 'PROYECCION', 'ESTIMADO CIERRE']:
             df_mostrar_admin[col] = df_mostrar_admin[col].apply(formato_pesos)
         df_mostrar_admin['# CLIENTES'] = df_mostrar_admin['# CLIENTES'].apply(formato_numero)
-        df_mostrar_admin['% EFECTIVIDAD'] = df_mostrar_admin['% EFECTIVIDAD'].apply(lambda x: f"{x:.2f}%".replace(".", ","))
-        
         st.dataframe(df_mostrar_admin, use_container_width=True)
+
+    # ---------------------------------------------------------
+    # TAB 4: HERRAMIENTAS EXCLUSIVAS DE ADMINISTRACIÓN GERENCIAL
+    # ---------------------------------------------------------
+    with t4:
+        st.subheader("⚙️ Panel Administrativo del Gerente General")
+        
+        col_adm1, col_adm2 = st.columns(2)
+        
+        # MÓDULO 1: CAMBIO DE CONTRASEÑAS
+        with col_adm1:
+            st.markdown("### 🔑 Modificación de Contraseñas")
+            st.caption("Administra y restablece el acceso para cualquier usuario registrado:")
+            
+            usuario_a_modificar = st.selectbox(
+                "Seleccione el usuario:", 
+                options=list(st.session_state.usuarios_db.keys()),
+                format_func=lambda x: f"{st.session_state.usuarios_db[x]['nombre']} ({x})"
+            )
+            
+            nueva_clave = st.text_input("Nueva contraseña:", type="password", key="new_pass_input")
+            confirmar_clave = st.text_input("Confirmar nueva contraseña:", type="password", key="confirm_pass_input")
+            
+            if st.button("🔄 Actualizar Contraseña", type="primary"):
+                if not nueva_clave:
+                    st.error("Por favor ingresa una contraseña válida.")
+                elif nueva_clave != confirmar_clave:
+                    st.error("Las contraseñas no coinciden. Verifíquelas nuevamente.")
+                else:
+                    st.session_state.usuarios_db[usuario_a_modificar]["hash"] = hacer_hash(nueva_clave)
+                    st.success(f"¡Contraseña actualizada con éxito para **{st.session_state.usuarios_db[usuario_a_modificar]['nombre']}**!")
+
+        # MÓDULO 2: LOGO Y REINICIO CON BACKUP Y ALERTA
+        with col_adm2:
+            st.markdown("### 🖼️ Actualizar Logo Corporativo")
+            uploaded_logo = st.file_uploader("Cargar nuevo archivo de logo", type=["png", "jpg", "jpeg"])
+            if uploaded_logo is not None:
+                img = Image.open(uploaded_logo)
+                img.save(LOGO_PATH)
+                st.success("¡Logo guardado de forma permanente!")
+                st.rerun()
+
+            st.markdown("---")
+            st.markdown("### ⚠️ Reinicio de Base de Datos y Backup")
+            st.caption("Esta acción restablecerá todas las metas, recaudos y proyecciones a cero.")
+
+            # Estado local para manejar el diálogo de alerta
+            if 'confirmar_reinicio' not in st.session_state:
+                st.session_state.confirmar_reinicio = False
+
+            if not st.session_state.confirmar_reinicio:
+                if st.button("🔴 Reiniciar Base de Datos", type="primary"):
+                    st.session_state.confirmar_reinicio = True
+                    st.rerun()
+            else:
+                st.warning("⚠️ **¿ESTÁ SEGURO DE REINICIAR LA BASE DE DATOS?**\n\nEsta acción borrará todos los recaudos ingresados. Se generará un backup automático del estado actual por seguridad.")
+                col_alert1, col_alert2 = st.columns(2)
+                
+                with col_alert1:
+                    if st.button("✅ SÍ, REINICIAR (Crear Backup)", use_container_width=True):
+                        # Guardar backup
+                        st.session_state.backup_db = st.session_state.base_meses_db.copy()
+                        # Reiniciar base
+                        st.session_state.base_meses_db = inicializar_base_datos()
+                        st.session_state.confirmar_reinicio = False
+                        st.success("¡Base de datos reiniciada con éxito! Backup guardado.")
+                        st.rerun()
+                
+                with col_alert2:
+                    if st.button("❌ CANCELAR", use_container_width=True):
+                        st.session_state.confirmar_reinicio = False
+                        st.rerun()
+
+            # Opción de Restaurar Backup
+            if st.session_state.backup_db is not None:
+                st.markdown("---")
+                st.info("📦 Existe una copia de respaldo (Backup) guardada.")
+                if st.button("⏪ Restaurar Último Backup"):
+                    st.session_state.base_meses_db = st.session_state.backup_db.copy()
+                    st.success("¡La base de datos se ha restaurado al estado anterior al último reinicio!")
+                    st.rerun()
