@@ -111,9 +111,10 @@ st.markdown(
         text-transform: uppercase;
     }
     [data-testid="stMetricValue"] {
-        color: #0f172a;
-        font-size: 1.7rem !important;
-        font-weight: 900;
+    color: #0f172a;
+    font-size: 1.25rem !important;
+    font-weight: 900;
+    white-space: nowrap;
     }
     [data-testid="stSidebar"] { background-color: #0f172a; }
     [data-testid="stSidebar"] h1,
