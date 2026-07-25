@@ -1,6 +1,7 @@
 import hashlib
 import io
 import os
+import requests
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -149,11 +150,224 @@ def inicializar_base_datos():
     ]
 
 
+
+# ============================================================
+# 6. CONEXIÓN Y PERSISTENCIA EN SUPABASE
+# ============================================================
+def obtener_secret(nombre):
+    """Obtiene un secreto desde Streamlit Secrets o variables de entorno."""
+    try:
+        valor = st.secrets.get(nombre)
+        if valor:
+            return str(valor).strip()
+    except Exception:
+        pass
+    return os.getenv(nombre, "").strip()
+
+
+SUPABASE_URL = obtener_secret("SUPABASE_URL").rstrip("/")
+SUPABASE_KEY = obtener_secret("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error(
+        "❌ No se encontraron las credenciales de Supabase. "
+        "Configura SUPABASE_URL y SUPABASE_KEY en Streamlit Cloud → Settings → Secrets."
+    )
+    st.stop()
+
+
+def supabase_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def supabase_request(method, endpoint, **kwargs):
+    """Ejecuta una petición REST contra Supabase y devuelve JSON."""
+    url = f"{SUPABASE_URL}/rest/v1/{endpoint.lstrip('/')}"
+    headers = supabase_headers()
+    headers.update(kwargs.pop("headers", {}))
+
+    respuesta = requests.request(
+        method=method,
+        url=url,
+        headers=headers,
+        timeout=30,
+        **kwargs,
+    )
+
+    if not respuesta.ok:
+        detalle = respuesta.text[:1000]
+        raise RuntimeError(
+            f"Supabase respondió HTTP {respuesta.status_code}: {detalle}"
+        )
+
+    if not respuesta.content:
+        return []
+
+    try:
+        return respuesta.json()
+    except ValueError:
+        return []
+
+
+def dataframe_desde_supabase():
+    """Carga toda la tabla base_meses_db y la adapta al formato del aplicativo."""
+    datos = supabase_request(
+        "GET",
+        "base_meses_db?select=id,cartera,director,mes,capital,num_clientes,"
+        "recaudo,proyeccion,efectividad,estimado_cierre&order=id.asc",
+    )
+
+    columnas = [
+        "SUPABASE_ID",
+        "CARTERA",
+        "DIRECTOR",
+        "MES",
+        "CAPITAL",
+        "# CLIENTES",
+        "RECAUDO",
+        "PROYECCION",
+        "% EFECTIVIDAD",
+        "ESTIMADO CIERRE",
+    ]
+
+    if not datos:
+        return pd.DataFrame(columns=columnas)
+
+    df = pd.DataFrame(datos).rename(
+        columns={
+            "id": "SUPABASE_ID",
+            "cartera": "CARTERA",
+            "director": "DIRECTOR",
+            "mes": "MES",
+            "capital": "CAPITAL",
+            "num_clientes": "# CLIENTES",
+            "recaudo": "RECAUDO",
+            "proyeccion": "PROYECCION",
+            "efectividad": "% EFECTIVIDAD",
+            "estimado_cierre": "ESTIMADO CIERRE",
+        }
+    )
+
+    for col in ["CAPITAL", "RECAUDO", "PROYECCION", "% EFECTIVIDAD", "ESTIMADO CIERRE"]:
+        df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0.0)
+
+    df["# CLIENTES"] = (
+        pd.to_numeric(df.get("# CLIENTES", 0), errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+
+    for col in ["CARTERA", "DIRECTOR", "MES"]:
+        df[col] = df[col].astype(str).str.strip()
+
+    return df[columnas]
+
+
+def registros_para_supabase(df):
+    """Convierte el DataFrame del aplicativo al esquema de Supabase."""
+    registros = []
+
+    def numero_seguro(valor):
+        convertido = pd.to_numeric(valor, errors="coerce")
+        return 0.0 if pd.isna(convertido) else float(convertido)
+
+    for _, row in df.iterrows():
+        capital = numero_seguro(row.get("CAPITAL", 0))
+        recaudo = numero_seguro(row.get("RECAUDO", 0))
+        proyeccion = numero_seguro(row.get("PROYECCION", 0))
+        efectividad = (recaudo / capital * 100) if capital > 0 else 0.0
+
+        registros.append(
+            {
+                "cartera": str(row.get("CARTERA", "")).strip(),
+                "director": str(row.get("DIRECTOR", "")).strip().upper(),
+                "mes": str(row.get("MES", "")).strip().upper(),
+                "capital": capital,
+                "num_clientes": int(numero_seguro(row.get("# CLIENTES", 0))),
+                "recaudo": recaudo,
+                "proyeccion": proyeccion,
+                "efectividad": efectividad,
+                "estimado_cierre": recaudo + proyeccion,
+            }
+        )
+
+    return registros
+
+
+def upsert_dataframe_supabase(df):
+    """Inserta o actualiza registros usando la clave única cartera+director+mes."""
+    registros = registros_para_supabase(df)
+
+    if not registros:
+        return []
+
+    return supabase_request(
+        "POST",
+        "base_meses_db?on_conflict=cartera,director,mes",
+        json=registros,
+        headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+    )
+
+
+def actualizar_registro_supabase(
+    registro_id,
+    recaudo,
+    proyeccion,
+    efectividad,
+    estimado_cierre,
+):
+    """Actualiza los valores operativos de un registro existente."""
+    return supabase_request(
+        "PATCH",
+        f"base_meses_db?id=eq.{int(registro_id)}",
+        json={
+            "recaudo": float(recaudo),
+            "proyeccion": float(proyeccion),
+            "efectividad": float(efectividad),
+            "estimado_cierre": float(estimado_cierre),
+        },
+        headers={"Prefer": "return=representation"},
+    )
+
+
+def eliminar_toda_la_base_supabase():
+    """Elimina todos los registros de la tabla para un reinicio limpio."""
+    return supabase_request(
+        "DELETE",
+        "base_meses_db?id=not.is.null",
+        headers={"Prefer": "return=minimal"},
+    )
+
+
+def cargar_base_desde_supabase():
+    """
+    Supabase es la fuente oficial de datos.
+    Si la tabla está vacía, se carga una sola vez la base inicial que ya
+    estaba incorporada en el app.py y se persiste en Supabase.
+    """
+    df = dataframe_desde_supabase()
+
+    if df.empty:
+        df_inicial = inicializar_base_datos()
+        upsert_dataframe_supabase(df_inicial)
+        df = dataframe_desde_supabase()
+
+    return df
+
+
 # ============================================================
 # 6. INICIALIZACIÓN DEL ESTADO DE SESIÓN
 # ============================================================
 if "base_meses_db" not in st.session_state:
-    st.session_state.base_meses_db = inicializar_base_datos()
+    try:
+        st.session_state.base_meses_db = cargar_base_desde_supabase()
+    except Exception as e:
+        st.error(f"❌ No fue posible cargar la base desde Supabase: {e}")
+        st.stop()
 
 if "backup_db" not in st.session_state:
     st.session_state.backup_db = None
@@ -630,6 +844,7 @@ elif st.session_state.rol == "director":
             df_editado = st.data_editor(
                 df_sub[
                     [
+                        "SUPABASE_ID",
                         "MES",
                         "CAPITAL",
                         "# CLIENTES",
@@ -638,6 +853,7 @@ elif st.session_state.rol == "director":
                     ]
                 ],
                 disabled=[
+                    "SUPABASE_ID",
                     "MES",
                     "CAPITAL",
                     "# CLIENTES",
@@ -645,6 +861,10 @@ elif st.session_state.rol == "director":
                 use_container_width=True,
                 key=f"editor_{director_actual}_{cartera_sel}",
                 column_config={
+                    "SUPABASE_ID": st.column_config.NumberColumn(
+                        "ID",
+                        disabled=True,
+                    ),
                     "MES": st.column_config.TextColumn(
                         "Mes / Periodo"
                     ),
@@ -677,12 +897,9 @@ elif st.session_state.rol == "director":
             ):
 
                 filas_modificadas = 0
+                errores_guardado = []
 
                 for idx, row in df_editado.iterrows():
-
-                    mes_val = str(
-                        row["MES"]
-                    ).strip().upper()
 
                     rec = (
                         float(row["RECAUDO"])
@@ -696,84 +913,91 @@ elif st.session_state.rol == "director":
                         else 0.0
                     )
 
-                    mask_global = (
-                        (
-                            st.session_state.base_meses_db[
-                                "DIRECTOR"
-                            ]
-                            .astype(str)
-                            .str.split("(")
-                            .str[0]
-                            .str.strip()
-                            .str.upper()
-                            == director_actual
+                    registro_id = row.get("SUPABASE_ID")
+
+                    if pd.isna(registro_id):
+                        errores_guardado.append(
+                            f"Fila {idx}: no tiene ID de Supabase."
                         )
-                        & (
-                            st.session_state.base_meses_db[
-                                "CARTERA"
-                            ]
-                            .astype(str)
-                            .str.strip()
-                            == cartera_sel.strip()
-                        )
-                        & (
-                            st.session_state.base_meses_db[
-                                "MES"
-                            ]
-                            .astype(str)
-                            .str.strip()
-                            .str.upper()
-                            == mes_val
-                        )
+                        continue
+
+                    cap_val = pd.to_numeric(
+                        row["CAPITAL"],
+                        errors="coerce",
                     )
 
-                    if mask_global.any():
+                    cap_val = (
+                        0.0
+                        if pd.isna(cap_val)
+                        else float(cap_val)
+                    )
 
-                        cap_val = (
+                    efectividad = (
+                        rec / cap_val * 100
+                        if cap_val > 0
+                        else 0.0
+                    )
+
+                    estimado_cierre = rec + proy
+
+                    try:
+                        actualizar_registro_supabase(
+                            registro_id=registro_id,
+                            recaudo=rec,
+                            proyeccion=proy,
+                            efectividad=efectividad,
+                            estimado_cierre=estimado_cierre,
+                        )
+
+                        mask_global = (
+                            st.session_state.base_meses_db[
+                                "SUPABASE_ID"
+                            ]
+                            == registro_id
+                        )
+
+                        if mask_global.any():
                             st.session_state.base_meses_db.loc[
                                 mask_global,
-                                "CAPITAL",
-                            ].values[0]
-                        )
+                                "RECAUDO",
+                            ] = rec
 
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "RECAUDO",
-                        ] = rec
+                            st.session_state.base_meses_db.loc[
+                                mask_global,
+                                "PROYECCION",
+                            ] = proy
 
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "PROYECCION",
-                        ] = proy
+                            st.session_state.base_meses_db.loc[
+                                mask_global,
+                                "% EFECTIVIDAD",
+                            ] = efectividad
 
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "% EFECTIVIDAD",
-                        ] = (
-                            rec / cap_val * 100
-                            if cap_val > 0
-                            else 0.0
-                        )
-
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "ESTIMADO CIERRE",
-                        ] = rec + proy
+                            st.session_state.base_meses_db.loc[
+                                mask_global,
+                                "ESTIMADO CIERRE",
+                            ] = estimado_cierre
 
                         filas_modificadas += 1
 
+                    except Exception as e:
+                        errores_guardado.append(
+                            f"ID {registro_id}: {str(e)}"
+                        )
+
                 if filas_modificadas > 0:
                     st.success(
-                        f"✅ ¡Se guardaron correctamente "
-                        f"{filas_modificadas} registros para "
-                        f"{cartera_sel}!"
+                        f"✅ Se guardaron correctamente "
+                        f"{filas_modificadas} registros en Supabase."
                     )
-                    st.rerun()
-                else:
+
+                if errores_guardado:
                     st.error(
-                        "⚠️ No se encontraron coincidencias exactas "
-                        "para actualizar la base de datos."
+                        "⚠️ Algunos registros no pudieron guardarse:\n\n"
+                        + "\n".join(errores_guardado)
                     )
+
+                if filas_modificadas > 0:
+                    st.rerun()
 
         with tab2:
 
@@ -783,6 +1007,7 @@ elif st.session_state.rol == "director":
 
             mis_datos = df_director.drop(
                 columns=[
+                    "SUPABASE_ID",
                     "DIRECTOR_NORMALIZADO",
                     "CARTERA_NORMALIZADA",
                 ],
@@ -1050,7 +1275,10 @@ elif st.session_state.rol == "admin":
 
         st.subheader("📋 Base General Desglosada")
 
-        df_mostrar_admin = df_all.copy()
+        df_mostrar_admin = df_all.drop(
+            columns=["SUPABASE_ID"],
+            errors="ignore",
+        ).copy()
 
         for col in [
             "CAPITAL",
