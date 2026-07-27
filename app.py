@@ -72,6 +72,58 @@ def formato_numero(val):
 
 
 # ============================================================
+# 2.0 SANEAMIENTO DE TIPOS ANTES DE MOSTRAR TABLAS
+# ============================================================
+def preparar_para_mostrar(df, columnas_texto=None, columnas_entero=None, columnas_decimal=None):
+    """
+    Sanea un dataframe antes de entregarlo a st.dataframe / st.data_editor.
+
+    Streamlit convierte los dataframes a formato Arrow (pyarrow) para
+    poder renderizarlos. Si una columna tiene tipos mezclados (por
+    ejemplo texto y número juntos, o valores nulos con formatos
+    distintos), esa conversión falla con errores como:
+    "ValueError ... convert_pandas_df_to_arrow_bytes".
+
+    Esta función fuerza tipos de datos consistentes por columna para
+    evitar ese error, sin importar de dónde venga el dataframe
+    (Supabase, un Excel cargado, o la base de respaldo local).
+    """
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+    out = out.loc[:, ~out.columns.duplicated()]
+    out = out.reset_index(drop=True)
+
+    columnas_texto = columnas_texto or [
+        c for c in ["ID", "CARTERA", "DIRECTOR", "MES"] if c in out.columns
+    ]
+    columnas_entero = columnas_entero or [
+        c for c in ["# CLIENTES"] if c in out.columns
+    ]
+    columnas_decimal = columnas_decimal or [
+        c for c in ["CAPITAL", "RECAUDO", "PROYECCION", "% EFECTIVIDAD", "ESTIMADO CIERRE"]
+        if c in out.columns
+    ]
+
+    for col in columnas_texto:
+        if col == "ID":
+            # El ID se conserva numérico (permite nulos) para que los
+            # botones de guardado sigan funcionando correctamente.
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+        else:
+            out[col] = out[col].where(out[col].notna(), "").astype(str)
+
+    for col in columnas_entero:
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).astype("int64")
+
+    for col in columnas_decimal:
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0).astype("float64")
+
+    return out
+
+
+# ============================================================
 # 2.1 RESUMEN CONSOLIDADO (SUMATORIA TOTAL POR CARTERA)
 # ============================================================
 def resumen_por_cartera(df):
@@ -134,6 +186,13 @@ def mostrar_resumen_cartera(df, titulo="📦 Sumatoria Total de la Cartera (por 
     if resumen.empty:
         st.info("No hay información de carteras disponible para consolidar.")
         return
+
+    resumen = preparar_para_mostrar(
+        resumen,
+        columnas_texto=["CARTERA"],
+        columnas_entero=["# CLIENTES"],
+        columnas_decimal=["CAPITAL", "RECAUDO", "PROYECCION", "% EFECTIVIDAD", "ESTIMADO CIERRE"],
+    )
 
     st.dataframe(
         resumen,
@@ -881,6 +940,7 @@ elif st.session_state.rol == "director":
             )
 
             df_sub = df_full[mask_cartera].copy()
+            df_sub_editor = preparar_para_mostrar(df_sub)
 
             c1, c2, c3 = st.columns(3)
 
@@ -906,7 +966,7 @@ elif st.session_state.rol == "director":
             )
 
             df_editado = st.data_editor(
-                df_sub[
+                df_sub_editor[
                     [
                         "ID",
                         "MES",
@@ -1010,6 +1070,8 @@ elif st.session_state.rol == "director":
                 ],
                 errors="ignore",
             ).copy()
+
+            mis_datos = preparar_para_mostrar(mis_datos)
 
             st.dataframe(
                 mis_datos,
@@ -1344,6 +1406,7 @@ elif st.session_state.rol == "admin":
         st.subheader("📋 Base General Desglosada")
 
         df_mostrar_admin = df_all.copy()
+        df_mostrar_admin = preparar_para_mostrar(df_mostrar_admin)
 
         st.dataframe(
             df_mostrar_admin,
