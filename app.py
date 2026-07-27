@@ -72,6 +72,100 @@ def formato_numero(val):
 
 
 # ============================================================
+# 2.1 RESUMEN CONSOLIDADO (SUMATORIA TOTAL POR CARTERA)
+# ============================================================
+def resumen_por_cartera(df):
+    """
+    Agrupa el dataframe recibido por CARTERA y calcula la sumatoria
+    total de CAPITAL, # CLIENTES, RECAUDO y PROYECCION, junto con el
+    % de EFECTIVIDAD y el ESTIMADO CIERRE consolidados. Agrega al
+    final una fila con el TOTAL GENERAL de todas las carteras.
+    """
+    columnas_salida = [
+        "CARTERA", "CAPITAL", "# CLIENTES", "RECAUDO",
+        "PROYECCION", "% EFECTIVIDAD", "ESTIMADO CIERRE",
+    ]
+
+    if df is None or df.empty or "CARTERA" not in df.columns:
+        return pd.DataFrame(columns=columnas_salida)
+
+    resumen = (
+        df.groupby("CARTERA", as_index=False)
+        .agg({
+            "CAPITAL": "sum",
+            "# CLIENTES": "sum",
+            "RECAUDO": "sum",
+            "PROYECCION": "sum",
+        })
+    )
+
+    resumen["% EFECTIVIDAD"] = (
+        (resumen["RECAUDO"] / resumen["CAPITAL"] * 100)
+        .where(resumen["CAPITAL"] > 0, 0)
+    )
+    resumen["ESTIMADO CIERRE"] = resumen["RECAUDO"] + resumen["PROYECCION"]
+
+    resumen = resumen.sort_values(
+        "CAPITAL", ascending=False
+    ).reset_index(drop=True)
+
+    cap_sum = resumen["CAPITAL"].sum()
+    rec_sum = resumen["RECAUDO"].sum()
+
+    fila_total = pd.DataFrame([{
+        "CARTERA": "🔷 TOTAL GENERAL",
+        "CAPITAL": cap_sum,
+        "# CLIENTES": resumen["# CLIENTES"].sum(),
+        "RECAUDO": rec_sum,
+        "PROYECCION": resumen["PROYECCION"].sum(),
+        "% EFECTIVIDAD": (rec_sum / cap_sum * 100) if cap_sum > 0 else 0.0,
+        "ESTIMADO CIERRE": resumen["ESTIMADO CIERRE"].sum(),
+    }])
+
+    return pd.concat([resumen, fila_total], ignore_index=True)[columnas_salida]
+
+
+def mostrar_resumen_cartera(df, titulo="📦 Sumatoria Total de la Cartera (por Cartera)"):
+    """Renderiza la tabla de sumatoria total separada por cartera."""
+    st.markdown(f"#### {titulo}")
+
+    resumen = resumen_por_cartera(df)
+
+    if resumen.empty:
+        st.info("No hay información de carteras disponible para consolidar.")
+        return
+
+    st.dataframe(
+        resumen,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "CARTERA": st.column_config.TextColumn(
+                "Cartera", width="medium"
+            ),
+            "CAPITAL": st.column_config.NumberColumn(
+                "Capital Total ($)", format="$ %,d", width="large"
+            ),
+            "# CLIENTES": st.column_config.NumberColumn(
+                "# Clientes", format="%,d", width="small"
+            ),
+            "RECAUDO": st.column_config.NumberColumn(
+                "Recaudo Total ($)", format="$ %,d", width="large"
+            ),
+            "PROYECCION": st.column_config.NumberColumn(
+                "Proyección Total ($)", format="$ %,d", width="large"
+            ),
+            "% EFECTIVIDAD": st.column_config.NumberColumn(
+                "% Efectividad", format="%.2f %%", width="small"
+            ),
+            "ESTIMADO CIERRE": st.column_config.NumberColumn(
+                "Estimado Cierre ($)", format="$ %,d", width="large"
+            ),
+        },
+    )
+
+
+# ============================================================
 # 3. ESTILOS CSS PERSONALIZADOS
 # ============================================================
 st.markdown(
@@ -99,9 +193,12 @@ st.markdown(
 
     [data-testid="stMetricValue"] {
         color: #0f172a;
-        font-size: 1.25rem !important;
+        font-size: clamp(1.05rem, 2.1vw, 1.7rem) !important;
         font-weight: 900;
-        white-space: nowrap;
+        white-space: normal !important;
+        overflow-wrap: break-word;
+        word-break: break-word;
+        line-height: 1.25;
     }
 
     [data-testid="stSidebar"] { background-color: #0f172a; }
@@ -217,6 +314,7 @@ SUPABASE_HEADERS = {
 # La tabla real de Supabase usa nombres en minúscula; la aplicación
 # trabaja internamente con estos nombres visibles.
 COLUMNAS_APP = [
+    "ID",
     "CARTERA",
     "DIRECTOR",
     "MES",
@@ -601,6 +699,13 @@ if st.session_state.rol == "presidencia":
         )
         st.plotly_chart(fig_cart_bar, use_container_width=True)
 
+        st.markdown("---")
+
+        mostrar_resumen_cartera(
+            df_all,
+            titulo="📦 Sumatoria Total de la Cartera (por Cartera)",
+        )
+
     with p_tab3:
         st.subheader("📈 Comportamiento Mensual por Cartera Específica")
 
@@ -752,10 +857,11 @@ elif st.session_state.rol == "director":
         )
 
     else:
-        tab1, tab2 = st.tabs(
+        tab1, tab2, tab3 = st.tabs(
             [
                 "📅 Captura por Cartera y Mes",
                 "📋 Resumen Completo",
+                "📦 Base General por Cartera",
             ]
         )
 
@@ -820,25 +926,30 @@ elif st.session_state.rol == "director":
                 key=f"editor_{director_actual}_{cartera_sel}",
                 column_config={
                     "MES": st.column_config.TextColumn(
-                        "Mes / Periodo"
+                        "Mes / Periodo",
+                        width="medium",
                     ),
                     "CAPITAL": st.column_config.NumberColumn(
                         "Capital ($)",
                         format="$ %,d",
+                        width="large",
                     ),
                     "# CLIENTES": st.column_config.NumberColumn(
                         "# Clientes",
                         format="%,d",
+                        width="small",
                     ),
                     "RECAUDO": st.column_config.NumberColumn(
                         "Recaudo Actual ($)",
                         format="$ %,d",
                         min_value=0.0,
+                        width="large",
                     ),
                     "PROYECCION": st.column_config.NumberColumn(
                         "Proyección ($)",
                         format="$ %,d",
                         min_value=0.0,
+                        width="large",
                     ),
                 },
                 hide_index=True,
@@ -900,25 +1011,45 @@ elif st.session_state.rol == "director":
                 errors="ignore",
             ).copy()
 
-            for col in [
-                "CAPITAL",
-                "RECAUDO",
-                "PROYECCION",
-                "ESTIMADO CIERRE",
-            ]:
-                if col in mis_datos.columns:
-                    mis_datos[col] = mis_datos[col].apply(
-                        formato_pesos
-                    )
-
-            if "# CLIENTES" in mis_datos.columns:
-                mis_datos["# CLIENTES"] = mis_datos[
-                    "# CLIENTES"
-                ].apply(formato_numero)
-
             st.dataframe(
                 mis_datos,
                 use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "CAPITAL": st.column_config.NumberColumn(
+                        "Capital ($)", format="$ %,d", width="large"
+                    ),
+                    "# CLIENTES": st.column_config.NumberColumn(
+                        "# Clientes", format="%,d", width="small"
+                    ),
+                    "RECAUDO": st.column_config.NumberColumn(
+                        "Recaudo ($)", format="$ %,d", width="large"
+                    ),
+                    "PROYECCION": st.column_config.NumberColumn(
+                        "Proyección ($)", format="$ %,d", width="large"
+                    ),
+                    "% EFECTIVIDAD": st.column_config.NumberColumn(
+                        "% Efectividad", format="%.2f %%", width="small"
+                    ),
+                    "ESTIMADO CIERRE": st.column_config.NumberColumn(
+                        "Estimado Cierre ($)", format="$ %,d", width="large"
+                    ),
+                },
+            )
+
+        with tab3:
+
+            st.subheader(
+                f"📦 Base General por Cartera - {st.session_state.nombre}"
+            )
+            st.caption(
+                "Sumatoria total de capital, recaudo y proyección, "
+                "separada por cada cartera a su cargo."
+            )
+
+            mostrar_resumen_cartera(
+                df_director,
+                titulo="📦 Sumatoria Total por Cartera",
             )
 
 
@@ -1201,31 +1332,43 @@ elif st.session_state.rol == "admin":
 
     with t3:
 
+        st.subheader("📋 Base General")
+
+        mostrar_resumen_cartera(
+            df_all,
+            titulo="📦 Sumatoria Total de la Cartera (por Cartera)",
+        )
+
+        st.markdown("---")
+
         st.subheader("📋 Base General Desglosada")
 
         df_mostrar_admin = df_all.copy()
 
-        for col in [
-            "CAPITAL",
-            "RECAUDO",
-            "PROYECCION",
-            "ESTIMADO CIERRE",
-        ]:
-            if col in df_mostrar_admin.columns:
-                df_mostrar_admin[col] = (
-                    df_mostrar_admin[col]
-                    .apply(formato_pesos)
-                )
-
-        if "# CLIENTES" in df_mostrar_admin.columns:
-            df_mostrar_admin["# CLIENTES"] = (
-                df_mostrar_admin["# CLIENTES"]
-                .apply(formato_numero)
-            )
-
         st.dataframe(
             df_mostrar_admin,
             use_container_width=True,
+            hide_index=True,
+            column_config={
+                "CAPITAL": st.column_config.NumberColumn(
+                    "Capital ($)", format="$ %,d", width="large"
+                ),
+                "# CLIENTES": st.column_config.NumberColumn(
+                    "# Clientes", format="%,d", width="small"
+                ),
+                "RECAUDO": st.column_config.NumberColumn(
+                    "Recaudo ($)", format="$ %,d", width="large"
+                ),
+                "PROYECCION": st.column_config.NumberColumn(
+                    "Proyección ($)", format="$ %,d", width="large"
+                ),
+                "% EFECTIVIDAD": st.column_config.NumberColumn(
+                    "% Efectividad", format="%.2f %%", width="small"
+                ),
+                "ESTIMADO CIERRE": st.column_config.NumberColumn(
+                    "Estimado Cierre ($)", format="$ %,d", width="large"
+                ),
+            },
         )
 
     with t4:
