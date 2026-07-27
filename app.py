@@ -211,6 +211,23 @@ SUPABASE_HEADERS = {
 }
 
 
+
+# Columnas internas estandarizadas de la aplicación.
+# La tabla real de Supabase usa nombres en minúscula; la aplicación
+# trabaja internamente con estos nombres visibles.
+COLUMNAS_APP = [
+    "ID",
+    "CARTERA",
+    "DIRECTOR",
+    "MES",
+    "CAPITAL",
+    "# CLIENTES",
+    "RECAUDO",
+    "PROYECCION",
+    "% EFECTIVIDAD",
+    "ESTIMADO CIERRE",
+]
+
 def supabase_request(method, endpoint, **kwargs):
     url = f"{SUPABASE_URL}/rest/v1/{endpoint}"
     headers = dict(SUPABASE_HEADERS)
