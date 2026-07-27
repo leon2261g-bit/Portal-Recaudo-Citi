@@ -241,6 +241,7 @@ st.markdown(
         padding: 20px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
         border-top: 4px solid #2563eb;
+        overflow: visible !important;
     }
 
     [data-testid="stMetricLabel"] {
@@ -252,12 +253,20 @@ st.markdown(
 
     [data-testid="stMetricValue"] {
         color: #0f172a;
-        font-size: clamp(1.05rem, 2.1vw, 1.7rem) !important;
         font-weight: 900;
         white-space: normal !important;
-        overflow-wrap: break-word;
+        overflow: visible !important;
+        text-overflow: clip !important;
         word-break: break-word;
-        line-height: 1.25;
+        line-height: 1.2;
+    }
+
+    [data-testid="stMetricValue"] > div {
+        font-size: clamp(1.0rem, 1.7vw, 1.6rem) !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        word-break: break-word;
     }
 
     [data-testid="stSidebar"] { background-color: #0f172a; }
@@ -711,6 +720,8 @@ if st.session_state.rol == "presidencia":
         fig_rank_bar.update_traces(
             texttemplate="$ %{x:,.0f} COP",
             textposition="outside",
+            textfont=dict(size=13, family="Arial Black", color="#0f172a"),
+            cliponaxis=False,
             hovertemplate="%{y}<br>$ %{x:,.0f} COP<extra></extra>",
         )
         fig_rank_bar.update_layout(
@@ -718,7 +729,7 @@ if st.session_state.rol == "presidencia":
             xaxis_title="Recaudo (COP)",
             yaxis_title="",
             xaxis_tickformat=",.0f",
-            margin=dict(l=20, r=100, t=60, b=20),
+            margin=dict(l=20, r=160, t=60, b=20),
         )
         st.plotly_chart(fig_rank_bar, use_container_width=True)
 
@@ -747,6 +758,8 @@ if st.session_state.rol == "presidencia":
         fig_cart_bar.update_traces(
             texttemplate="$ %{x:,.0f} COP",
             textposition="outside",
+            textfont=dict(size=13, family="Arial Black", color="#0f172a"),
+            cliponaxis=False,
             hovertemplate="%{y}<br>$ %{x:,.0f} COP<extra></extra>",
         )
         fig_cart_bar.update_layout(
@@ -754,7 +767,7 @@ if st.session_state.rol == "presidencia":
             xaxis_title="Recaudo (COP)",
             yaxis_title="",
             xaxis_tickformat=",.0f",
-            margin=dict(l=20, r=110, t=60, b=20),
+            margin=dict(l=20, r=170, t=60, b=20),
         )
         st.plotly_chart(fig_cart_bar, use_container_width=True)
 
@@ -1188,6 +1201,8 @@ elif st.session_state.rol == "admin":
         fig1.update_traces(
             texttemplate="$ %{x:,.0f} COP",
             textposition="outside",
+            textfont=dict(size=13, family="Arial Black", color="#0f172a"),
+            cliponaxis=False,
             hovertemplate="%{y}<br>$ %{x:,.0f} COP<extra></extra>",
         )
         fig1.update_layout(
@@ -1195,7 +1210,7 @@ elif st.session_state.rol == "admin":
             xaxis_title="Recaudo (COP)",
             yaxis_title="",
             xaxis_tickformat=",.0f",
-            margin=dict(l=20, r=110, t=30, b=20),
+            margin=dict(l=20, r=170, t=30, b=20),
         )
         st.plotly_chart(fig1, use_container_width=True)
 
@@ -1224,6 +1239,8 @@ elif st.session_state.rol == "admin":
             fig_rank_g.update_traces(
                 texttemplate="$ %{x:,.0f} COP",
                 textposition="outside",
+                textfont=dict(size=12, family="Arial Black", color="#0f172a"),
+                cliponaxis=False,
                 hovertemplate="%{y}<br>$ %{x:,.0f} COP<extra></extra>",
             )
             fig_rank_g.update_layout(
@@ -1231,7 +1248,7 @@ elif st.session_state.rol == "admin":
                 xaxis_title="Recaudo (COP)",
                 yaxis_title="",
                 xaxis_tickformat=",.0f",
-                margin=dict(l=20, r=110, t=30, b=20),
+                margin=dict(l=20, r=150, t=30, b=20),
             )
             st.plotly_chart(fig_rank_g, use_container_width=True)
 
