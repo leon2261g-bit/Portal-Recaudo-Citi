@@ -217,7 +217,6 @@ SUPABASE_HEADERS = {
 # La tabla real de Supabase usa nombres en minúscula; la aplicación
 # trabaja internamente con estos nombres visibles.
 COLUMNAS_APP = [
-    "ID",
     "CARTERA",
     "DIRECTOR",
     "MES",
