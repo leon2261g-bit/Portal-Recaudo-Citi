@@ -99,8 +99,9 @@ st.markdown(
 
     [data-testid="stMetricValue"] {
         color: #0f172a;
-        font-size: 1.7rem !important;
+        font-size: 1.25rem !important;
         font-weight: 900;
+        white-space: nowrap;
     }
 
     [data-testid="stSidebar"] { background-color: #0f172a; }
