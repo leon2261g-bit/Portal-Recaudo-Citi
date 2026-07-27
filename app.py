@@ -2,6 +2,7 @@ import hashlib
 import io
 import os
 import pandas as pd
+import requests
 import plotly.express as px
 import streamlit as st
 from PIL import Image
@@ -98,9 +99,8 @@ st.markdown(
 
     [data-testid="stMetricValue"] {
         color: #0f172a;
-        font-size: 1.25rem !important;
+        font-size: 1.7rem !important;
         font-weight: 900;
-        white-space: nowrap;
     }
 
     [data-testid="stSidebar"] { background-color: #0f172a; }
@@ -184,10 +184,146 @@ def inicializar_base_datos():
 
 
 # ============================================================
+# 5B. CONEXIÓN Y SINCRONIZACIÓN CON SUPABASE
+# ============================================================
+def obtener_secret(nombre):
+    try:
+        return st.secrets[nombre]
+    except Exception:
+        return os.getenv(nombre)
+
+SUPABASE_URL = obtener_secret("SUPABASE_URL")
+SUPABASE_KEY = obtener_secret("SUPABASE_KEY")
+SUPABASE_TABLE = "base_meses_db"
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error(
+        "❌ No se encontraron las credenciales de Supabase. "
+        "Configura SUPABASE_URL y SUPABASE_KEY en Streamlit Cloud → Settings → Secrets."
+    )
+    st.stop()
+
+SUPABASE_URL = str(SUPABASE_URL).rstrip("/")
+SUPABASE_HEADERS = {
+    "apikey": str(SUPABASE_KEY),
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+}
+
+
+def supabase_request(method, endpoint, **kwargs):
+    url = f"{SUPABASE_URL}/rest/v1/{endpoint}"
+    headers = dict(SUPABASE_HEADERS)
+    headers.update(kwargs.pop("headers", {}))
+    response = requests.request(method, url, headers=headers, timeout=30, **kwargs)
+    if not response.ok:
+        raise RuntimeError(
+            f"Supabase HTTP {response.status_code}: {response.text[:1000]}"
+        )
+    if not response.text:
+        return []
+    try:
+        return response.json()
+    except Exception:
+        return []
+
+
+def dataframe_desde_supabase():
+    """Fuente oficial de datos: tabla base_meses_db en Supabase."""
+    registros = supabase_request(
+        "GET",
+        f"{SUPABASE_TABLE}?select=*&order=id.asc",
+    )
+    if not registros:
+        return pd.DataFrame(columns=["ID", *COLUMNAS_APP])
+
+    df = pd.DataFrame(registros).rename(columns={
+        "id": "ID",
+        "cartera": "CARTERA",
+        "director": "DIRECTOR",
+        "mes": "MES",
+        "capital": "CAPITAL",
+        "num_clientes": "# CLIENTES",
+        "recaudo": "RECAUDO",
+        "proyeccion": "PROYECCION",
+        "efectividad": "% EFECTIVIDAD",
+        "estimado_cierre": "ESTIMADO CIERRE",
+    })
+
+    for col in ["CARTERA", "DIRECTOR", "MES"]:
+        if col not in df.columns:
+            df[col] = ""
+        df[col] = df[col].astype(str).str.strip()
+
+    df["DIRECTOR"] = df["DIRECTOR"].str.upper()
+    df["MES"] = df["MES"].str.upper()
+
+    for col in ["CAPITAL", "RECAUDO", "PROYECCION", "% EFECTIVIDAD", "ESTIMADO CIERRE"]:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    if "# CLIENTES" not in df.columns:
+        df["# CLIENTES"] = 0
+    df["# CLIENTES"] = pd.to_numeric(df["# CLIENTES"], errors="coerce").fillna(0).astype(int)
+
+    # Mantener los valores derivados consistentes con el recaudo actual.
+    df["% EFECTIVIDAD"] = (
+        (df["RECAUDO"] / df["CAPITAL"] * 100)
+        .where(df["CAPITAL"] > 0, 0)
+        .fillna(0)
+    )
+    df["ESTIMADO CIERRE"] = df["RECAUDO"] + df["PROYECCION"]
+
+    return df[["ID", *COLUMNAS_APP]].copy()
+
+
+def actualizar_sesion_desde_supabase():
+    df = dataframe_desde_supabase()
+    st.session_state.base_meses_db = df
+    return df
+
+
+def actualizar_registro_supabase(registro_id, recaudo, proyeccion, capital):
+    efectividad = (recaudo / capital * 100) if capital > 0 else 0.0
+    estimado_cierre = recaudo + proyeccion
+    payload = {
+        "recaudo": float(recaudo),
+        "proyeccion": float(proyeccion),
+        "efectividad": float(efectividad),
+        "estimado_cierre": float(estimado_cierre),
+    }
+    supabase_request(
+        "PATCH",
+        f"{SUPABASE_TABLE}?id=eq.{int(registro_id)}",
+        json=payload,
+        headers={"Prefer": "return=minimal"},
+    )
+
+
+def eliminar_todos_registros_supabase():
+    supabase_request(
+        "DELETE",
+        f"{SUPABASE_TABLE}?id=not.is.null",
+        headers={"Prefer": "return=minimal"},
+    )
+
+
+
+# ============================================================
 # 6. INICIALIZACIÓN DEL ESTADO DE SESIÓN
 # ============================================================
 if "base_meses_db" not in st.session_state:
-    st.session_state.base_meses_db = inicializar_base_datos()
+    try:
+        df_supabase = dataframe_desde_supabase()
+        if not df_supabase.empty:
+            st.session_state.base_meses_db = df_supabase
+        else:
+            # Solo se usa como respaldo si Supabase está vacío.
+            st.session_state.base_meses_db = inicializar_base_datos()
+    except Exception as e:
+        st.error(f"❌ Error cargando la base desde Supabase: {e}")
+        st.stop()
 
 if "backup_db" not in st.session_state:
     st.session_state.backup_db = None
@@ -299,6 +435,17 @@ st.sidebar.title(f"👤 {st.session_state.nombre}")
 st.sidebar.caption(f"Rol: **{st.session_state.rol.upper()}**")
 st.sidebar.markdown("---")
 
+if st.sidebar.button("🔄 Actualizar datos desde Supabase", use_container_width=True):
+    try:
+        actualizar_sesion_desde_supabase()
+        for key in list(st.session_state.keys()):
+            if str(key).startswith("editor_"):
+                del st.session_state[key]
+        st.success("✅ Datos actualizados desde Supabase.")
+        st.rerun()
+    except Exception as e:
+        st.error(f"❌ Error actualizando datos: {e}")
+
 if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.autenticado = False
     st.rerun()
@@ -322,6 +469,11 @@ PALETA_VIVA = [
 # VISTA 1: PRESIDENCIA
 # ============================================================
 if st.session_state.rol == "presidencia":
+
+    try:
+        actualizar_sesion_desde_supabase()
+    except Exception as e:
+        st.error(f"❌ No fue posible actualizar la información: {e}")
 
     st.title("🏛️ Panel de Control Presidencial")
     st.caption(
@@ -633,6 +785,7 @@ elif st.session_state.rol == "director":
             df_editado = st.data_editor(
                 df_sub[
                     [
+                        "ID",
                         "MES",
                         "CAPITAL",
                         "# CLIENTES",
@@ -641,6 +794,7 @@ elif st.session_state.rol == "director":
                     ]
                 ],
                 disabled=[
+                    "ID",
                     "MES",
                     "CAPITAL",
                     "# CLIENTES",
@@ -680,103 +834,40 @@ elif st.session_state.rol == "director":
             ):
 
                 filas_modificadas = 0
+                errores = []
 
-                for idx, row in df_editado.iterrows():
+                try:
+                    for _, row in df_editado.iterrows():
+                        registro_id = row.get("ID")
+                        if pd.isna(registro_id):
+                            errores.append(f"Registro sin ID: {row['MES']}")
+                            continue
 
-                    mes_val = str(
-                        row["MES"]
-                    ).strip().upper()
+                        rec = float(row["RECAUDO"]) if pd.notna(row["RECAUDO"]) else 0.0
+                        proy = float(row["PROYECCION"]) if pd.notna(row["PROYECCION"]) else 0.0
+                        cap_val = float(row["CAPITAL"]) if pd.notna(row["CAPITAL"]) else 0.0
 
-                    rec = (
-                        float(row["RECAUDO"])
-                        if pd.notna(row["RECAUDO"])
-                        else 0.0
-                    )
-
-                    proy = (
-                        float(row["PROYECCION"])
-                        if pd.notna(row["PROYECCION"])
-                        else 0.0
-                    )
-
-                    mask_global = (
-                        (
-                            st.session_state.base_meses_db[
-                                "DIRECTOR"
-                            ]
-                            .astype(str)
-                            .str.split("(")
-                            .str[0]
-                            .str.strip()
-                            .str.upper()
-                            == director_actual
+                        actualizar_registro_supabase(
+                            registro_id, rec, proy, cap_val
                         )
-                        & (
-                            st.session_state.base_meses_db[
-                                "CARTERA"
-                            ]
-                            .astype(str)
-                            .str.strip()
-                            == cartera_sel.strip()
-                        )
-                        & (
-                            st.session_state.base_meses_db[
-                                "MES"
-                            ]
-                            .astype(str)
-                            .str.strip()
-                            .str.upper()
-                            == mes_val
-                        )
-                    )
-
-                    if mask_global.any():
-
-                        cap_val = (
-                            st.session_state.base_meses_db.loc[
-                                mask_global,
-                                "CAPITAL",
-                            ].values[0]
-                        )
-
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "RECAUDO",
-                        ] = rec
-
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "PROYECCION",
-                        ] = proy
-
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "% EFECTIVIDAD",
-                        ] = (
-                            rec / cap_val * 100
-                            if cap_val > 0
-                            else 0.0
-                        )
-
-                        st.session_state.base_meses_db.loc[
-                            mask_global,
-                            "ESTIMADO CIERRE",
-                        ] = rec + proy
-
                         filas_modificadas += 1
 
-                if filas_modificadas > 0:
-                    st.success(
-                        f"✅ ¡Se guardaron correctamente "
-                        f"{filas_modificadas} registros para "
-                        f"{cartera_sel}!"
-                    )
-                    st.rerun()
-                else:
-                    st.error(
-                        "⚠️ No se encontraron coincidencias exactas "
-                        "para actualizar la base de datos."
-                    )
+                    if filas_modificadas > 0:
+                        actualizar_sesion_desde_supabase()
+                        for key in list(st.session_state.keys()):
+                            if str(key).startswith("editor_"):
+                                del st.session_state[key]
+                        st.success(
+                            f"✅ ¡Se guardaron correctamente {filas_modificadas} registros para {cartera_sel}!"
+                        )
+                        if errores:
+                            st.warning("⚠️ Algunos registros no se actualizaron: " + ", ".join(errores))
+                        st.rerun()
+                    else:
+                        st.error("⚠️ No se actualizaron registros.")
+
+                except Exception as e:
+                    st.error(f"❌ Error guardando los cambios en Supabase: {e}")
 
         with tab2:
 
@@ -818,6 +909,11 @@ elif st.session_state.rol == "director":
 # VISTA 3: GERENTE GENERAL
 # ============================================================
 elif st.session_state.rol == "admin":
+
+    try:
+        actualizar_sesion_desde_supabase()
+    except Exception as e:
+        st.error(f"❌ No fue posible actualizar la información: {e}")
 
     st.title("📊 Panel Consolidado Gerencial")
 
