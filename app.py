@@ -964,8 +964,6 @@ if st.session_state.rol == "presidencia":
     m3.metric("Proyección Total", formato_pesos(proy_tot))
     m4.metric("% Efectividad Global", f"{efect_global:.2f}%")
 
-    grafico_tendencia_mensual(df_all, meses_atras=6)
-
     st.markdown("---")
 
     p_tab1, p_tab2, p_tab3, p_tab4 = st.tabs(
@@ -991,31 +989,60 @@ if st.session_state.rol == "presidencia":
             lambda x: f"<b>{x}</b>"
         )
 
-        fig_rank_bar = px.bar(
-            df_dir.sort_values("RECAUDO", ascending=True),
-            x="RECAUDO",
-            y="DIRECTOR_BOLD",
-            orientation="h",
-            text="RECAUDO",
-            title="<b>Ranking de Recaudo por Director</b>",
-            color="DIRECTOR_BOLD",
-            color_discrete_map=paleta_directores,
-        )
-        fig_rank_bar.update_traces(
-            texttemplate="$ %{x:,.0f} COP",
-            textposition="outside",
-            textfont=dict(size=13, family="Arial Black", color="#0f172a"),
-            cliponaxis=False,
-            hovertemplate="%{y}<br>$ %{x:,.0f} COP<extra></extra>",
-        )
-        fig_rank_bar.update_layout(
-            showlegend=False,
-            xaxis_title="Recaudo (COP)",
-            yaxis_title="",
-            xaxis_tickformat=",.0f",
-            margin=dict(l=20, r=160, t=60, b=20),
-        )
-        st.plotly_chart(fig_rank_bar, use_container_width=True)
+        col_p1, col_p2 = st.columns([1.3, 1])
+
+        with col_p1:
+            fig_rank_bar = px.bar(
+                df_dir.sort_values("RECAUDO", ascending=True),
+                x="RECAUDO",
+                y="DIRECTOR_BOLD",
+                orientation="h",
+                text="RECAUDO",
+                title="<b>Ranking de Recaudo por Director</b>",
+                color="DIRECTOR_BOLD",
+                color_discrete_map=paleta_directores,
+            )
+            fig_rank_bar.update_traces(
+                texttemplate="$ %{x:,.0f} COP",
+                textposition="outside",
+                textfont=dict(size=13, family="Arial Black", color="#0f172a"),
+                cliponaxis=False,
+                hovertemplate="%{y}<br>$ %{x:,.0f} COP<extra></extra>",
+            )
+            fig_rank_bar.update_layout(
+                showlegend=False,
+                xaxis_title="Recaudo (COP)",
+                yaxis_title="",
+                xaxis_tickformat=",.0f",
+                margin=dict(l=20, r=160, t=60, b=20),
+            )
+            st.plotly_chart(fig_rank_bar, use_container_width=True)
+
+        with col_p2:
+            st.markdown("###### 🥧 Participación % por Director")
+
+            fig_part_pres = px.pie(
+                df_dir,
+                names="DIRECTOR_BOLD",
+                values="RECAUDO",
+                hole=0.4,
+                color="DIRECTOR_BOLD",
+                color_discrete_map=paleta_directores,
+            )
+            fig_part_pres.update_traces(
+                textposition="inside",
+                textinfo="percent+label",
+                textfont=dict(
+                    size=12,
+                    color="white",
+                    family="Arial Black",
+                ),
+            )
+            fig_part_pres.update_layout(
+                showlegend=False,
+                margin=dict(l=10, r=10, t=30, b=10),
+            )
+            st.plotly_chart(fig_part_pres, use_container_width=True)
 
     with p_tab2:
         st.subheader("📊 Peso de Capital y Efectividad por Cartera")
@@ -1477,8 +1504,6 @@ elif st.session_state.rol == "admin":
             "Total Clientes",
             formato_numero(df_all_t1["# CLIENTES"].sum()),
         )
-
-        grafico_tendencia_mensual(df_all_t1, meses_atras=6)
 
         st.markdown("---")
 
