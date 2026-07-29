@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import requests
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from PIL import Image
 
@@ -647,6 +648,275 @@ PALETA_VIVA = [
     "#0D9488",
 ]
 
+PALETA_CARTERAS_BASE = (
+    px.colors.qualitative.Dark24 + px.colors.qualitative.Vivid
+)
+
+
+# ============================================================
+# 6.1 PALETA DE COLOR CONSISTENTE (DIRECTOR / CARTERA)
+# ============================================================
+def construir_paleta(valores, paleta_base=None):
+    """
+    Asigna un color fijo a cada valor único (ordenado alfabéticamente),
+    para que un mismo director o cartera use siempre el mismo color
+    sin importar el gráfico o la pestaña donde aparezca.
+    """
+    paleta_base = paleta_base or PALETA_VIVA
+    valores_unicos = sorted(
+        {str(v).strip() for v in valores if pd.notna(v) and str(v).strip()}
+    )
+    return {
+        v: paleta_base[i % len(paleta_base)]
+        for i, v in enumerate(valores_unicos)
+    }
+
+
+def paleta_bold(mapa):
+    """Convierte un mapa de colores a las claves '<b>valor</b>' usadas
+    en los gráficos que resaltan la etiqueta en negrilla."""
+    return {f"<b>{k}</b>": v for k, v in mapa.items()}
+
+
+# ============================================================
+# 6.2 SERIE MENSUAL CRONOLÓGICA (para tendencias)
+# ============================================================
+def preparar_serie_mensual(df):
+    """Agrupa CAPITAL/RECAUDO/PROYECCION por mes real (año + mes),
+    ordenados cronológicamente (no solo por nombre de mes)."""
+    if df is None or df.empty:
+        return pd.DataFrame(
+            columns=["CLAVE_ORDEN", "ETIQUETA_MES", "CAPITAL", "RECAUDO", "PROYECCION"]
+        )
+
+    dfp = preparar_periodo(df)
+    dfp = dfp.dropna(subset=["AÑO"])
+    if dfp.empty:
+        return pd.DataFrame(
+            columns=["CLAVE_ORDEN", "ETIQUETA_MES", "CAPITAL", "RECAUDO", "PROYECCION"]
+        )
+
+    dfp["CLAVE_ORDEN"] = dfp["AÑO"].astype(int) * 100 + dfp["MES_ORDEN"].astype(int)
+    dfp["ETIQUETA_MES"] = (
+        dfp["MES_NOMBRE"].str.title() + " " + dfp["AÑO"].astype(int).astype(str)
+    )
+
+    serie = (
+        dfp.groupby(["CLAVE_ORDEN", "ETIQUETA_MES"], as_index=False)
+        .agg({"CAPITAL": "sum", "RECAUDO": "sum", "PROYECCION": "sum"})
+        .sort_values("CLAVE_ORDEN")
+        .reset_index(drop=True)
+    )
+    return serie
+
+
+def grafico_tendencia_mensual(df, meses_atras=6, titulo="📉 Tendencia — Últimos Meses"):
+    """Mini gráfico de línea/área con la tendencia reciente de
+    Recaudo vs Proyección, a modo de 'sparkline' ampliado."""
+    serie = preparar_serie_mensual(df)
+
+    st.markdown(f"##### {titulo}")
+
+    if serie.empty:
+        st.info("No hay suficiente historial mensual para mostrar la tendencia.")
+        return
+
+    serie = serie.tail(meses_atras)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=serie["ETIQUETA_MES"], y=serie["RECAUDO"],
+        mode="lines+markers", name="Recaudo",
+        line=dict(color="#2563eb", width=3),
+        marker=dict(size=6),
+        fill="tozeroy", fillcolor="rgba(37,99,235,0.10)",
+    ))
+    fig.add_trace(go.Scatter(
+        x=serie["ETIQUETA_MES"], y=serie["PROYECCION"],
+        mode="lines+markers", name="Proyección",
+        line=dict(color="#f59e0b", width=3, dash="dot"),
+        marker=dict(size=6),
+    ))
+    fig.update_layout(
+        height=220,
+        margin=dict(l=10, r=10, t=10, b=10),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="left", x=0),
+        yaxis_tickformat=",.0f",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        hovermode="x unified",
+    )
+    fig.update_traces(hovertemplate="%{fullData.name}: $ %{y:,.0f} COP<extra></extra>")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ============================================================
+# 6.3 FILTROS GLOBALES (AÑO / CARTERA) — PERSISTENTES POR VISTA
+# ============================================================
+def aplicar_filtros_globales(df, key_prefix):
+    """Muestra un filtro de Año y Cartera que aplica a toda la vista
+    (todas las pestañas), en vez de que cada gráfico tenga el suyo."""
+    df_periodo = preparar_periodo(df)
+    anios = sorted(
+        [int(x) for x in df_periodo["AÑO"].dropna().unique()]
+    )
+    carteras = sorted(df["CARTERA"].dropna().unique().tolist())
+
+    col_f1, col_f2 = st.columns([1, 2])
+
+    with col_f1:
+        anio_sel = st.selectbox(
+            "📅 Año",
+            ["Todos"] + anios,
+            key=f"{key_prefix}_anio_global",
+        )
+
+    with col_f2:
+        cartera_sel = st.multiselect(
+            "📦 Cartera(s) — vacío = todas",
+            carteras,
+            default=[],
+            key=f"{key_prefix}_cartera_global",
+        )
+
+    df_filtrado = df.copy()
+
+    if anio_sel != "Todos":
+        df_periodo_f = preparar_periodo(df_filtrado)
+        indices_validos = df_periodo_f[
+            df_periodo_f["AÑO"] == int(anio_sel)
+        ].index
+        df_filtrado = df_filtrado.loc[indices_validos]
+
+    if cartera_sel:
+        df_filtrado = df_filtrado[df_filtrado["CARTERA"].isin(cartera_sel)]
+
+    return df_filtrado
+
+
+# ============================================================
+# 6.4 PANEL DE ALERTAS (SOLO GERENCIA)
+# ============================================================
+def panel_alertas_gerencia(df, umbral_efectividad=30.0):
+    """Resalta, sin tener que buscarlo en la tabla, qué carteras están
+    en riesgo (baja efectividad) y qué directores no han registrado
+    recaudo en el mes más reciente."""
+    st.markdown("#### 🚨 Alertas de Gestión")
+
+    if df is None or df.empty:
+        st.info("No hay datos suficientes para calcular alertas.")
+        return
+
+    resumen_cart = resumen_por_cartera(df)
+    resumen_cart = resumen_cart[
+        resumen_cart["CARTERA"] != "🔷 TOTAL GENERAL"
+    ]
+    criticas = resumen_cart[
+        (resumen_cart["CAPITAL"] > 0)
+        & (resumen_cart["% EFECTIVIDAD"] < umbral_efectividad)
+    ].sort_values("% EFECTIVIDAD")
+
+    df_periodo = preparar_periodo(df).dropna(subset=["AÑO"])
+    directores_sin_recaudo = pd.DataFrame(columns=["DIRECTOR", "RECAUDO"])
+    if not df_periodo.empty:
+        df_periodo["CLAVE_ORDEN"] = (
+            df_periodo["AÑO"].astype(int) * 100
+            + df_periodo["MES_ORDEN"].astype(int)
+        )
+        mes_max = df_periodo["CLAVE_ORDEN"].max()
+        df_mes_actual = df_periodo[df_periodo["CLAVE_ORDEN"] == mes_max]
+        directores_agg = (
+            df_mes_actual.groupby("DIRECTOR", as_index=False)["RECAUDO"]
+            .sum()
+        )
+        directores_sin_recaudo = directores_agg[
+            directores_agg["RECAUDO"] <= 0
+        ]
+
+    col_a1, col_a2 = st.columns(2)
+
+    with col_a1:
+        if criticas.empty:
+            st.success(
+                f"✅ Ninguna cartera está por debajo del {umbral_efectividad:.0f}% de efectividad."
+            )
+        else:
+            st.error(
+                f"⚠️ {len(criticas)} cartera(s) con efectividad menor al "
+                f"{umbral_efectividad:.0f}%:"
+            )
+            for _, row in criticas.iterrows():
+                st.markdown(
+                    f"- **{row['CARTERA']}** — {row['% EFECTIVIDAD']:.1f}% de efectividad "
+                    f"(Capital {formato_pesos(row['CAPITAL'])})"
+                )
+
+    with col_a2:
+        if directores_sin_recaudo.empty:
+            st.success(
+                "✅ Todos los directores registran recaudo en el mes más reciente."
+            )
+        else:
+            st.warning(
+                f"⚠️ {len(directores_sin_recaudo)} director(es) sin recaudo "
+                "registrado en el mes más reciente:"
+            )
+            for _, row in directores_sin_recaudo.iterrows():
+                st.markdown(f"- **{row['DIRECTOR']}**")
+
+
+# ============================================================
+# 6.5 COMPARATIVO CAPITAL vs RECAUDO vs PROYECCIÓN POR CARTERA
+# ============================================================
+def grafico_comparativo_capital_cartera(df, titulo="💠 Capital vs. Recaudo vs. Proyección por Cartera"):
+    """Barras horizontales apiladas por cartera: cuánto se ha
+    recaudado, cuánto está proyectado y cuánto capital falta por
+    gestionar, todo en una sola barra por cartera."""
+    st.markdown(f"#### {titulo}")
+
+    resumen = resumen_por_cartera(df)
+    resumen = resumen[resumen["CARTERA"] != "🔷 TOTAL GENERAL"].copy()
+
+    if resumen.empty:
+        st.info("No hay información de carteras disponible.")
+        return
+
+    resumen["RESTANTE"] = (
+        resumen["CAPITAL"] - resumen["RECAUDO"] - resumen["PROYECCION"]
+    ).clip(lower=0)
+    resumen = resumen.sort_values("CAPITAL", ascending=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=resumen["CARTERA"], x=resumen["RECAUDO"],
+        name="Recaudado", orientation="h",
+        marker_color="#059669",
+        hovertemplate="Recaudado: $ %{x:,.0f} COP<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        y=resumen["CARTERA"], x=resumen["PROYECCION"],
+        name="Proyectado", orientation="h",
+        marker_color="#f59e0b",
+        hovertemplate="Proyectado: $ %{x:,.0f} COP<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        y=resumen["CARTERA"], x=resumen["RESTANTE"],
+        name="Falta por gestionar", orientation="h",
+        marker_color="#e2e8f0",
+        hovertemplate="Falta por gestionar: $ %{x:,.0f} COP<extra></extra>",
+    ))
+    fig.update_layout(
+        barmode="stack",
+        height=max(320, 42 * len(resumen)),
+        xaxis_title="Capital (COP)",
+        yaxis_title="",
+        xaxis_tickformat=",.0f",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
 
 # ============================================================
 # VISTA 1: PRESIDENCIA
@@ -663,7 +933,19 @@ if st.session_state.rol == "presidencia":
         "Vista ejecutiva de alto nivel, participaciones de mercado y tendencias globales"
     )
 
-    df_all = st.session_state.base_meses_db.copy()
+    df_all_original = st.session_state.base_meses_db.copy()
+
+    # Paletas fijas por director/cartera calculadas sobre el universo
+    # completo de datos, para que el color no cambie al filtrar.
+    paleta_directores = paleta_bold(
+        construir_paleta(df_all_original["DIRECTOR"])
+    )
+    paleta_carteras = paleta_bold(
+        construir_paleta(df_all_original["CARTERA"], PALETA_CARTERAS_BASE)
+    )
+
+    st.markdown("##### 🔎 Filtros (aplican a todo el panel)")
+    df_all = aplicar_filtros_globales(df_all_original, key_prefix="pres")
 
     cap_tot = df_all["CAPITAL"].sum()
     rec_tot = df_all["RECAUDO"].sum()
@@ -681,6 +963,8 @@ if st.session_state.rol == "presidencia":
     m2.metric("Recaudo Total", formato_pesos(rec_tot))
     m3.metric("Proyección Total", formato_pesos(proy_tot))
     m4.metric("% Efectividad Global", f"{efect_global:.2f}%")
+
+    grafico_tendencia_mensual(df_all, meses_atras=6)
 
     st.markdown("---")
 
@@ -715,7 +999,7 @@ if st.session_state.rol == "presidencia":
             text="RECAUDO",
             title="<b>Ranking de Recaudo por Director</b>",
             color="DIRECTOR_BOLD",
-            color_discrete_sequence=PALETA_VIVA,
+            color_discrete_map=paleta_directores,
         )
         fig_rank_bar.update_traces(
             texttemplate="$ %{x:,.0f} COP",
@@ -734,42 +1018,40 @@ if st.session_state.rol == "presidencia":
         st.plotly_chart(fig_rank_bar, use_container_width=True)
 
     with p_tab2:
-        st.subheader("📊 Recaudo General por Cartera")
-
-        df_cart_tot = (
-            df_all.groupby("CARTERA", as_index=False)["RECAUDO"]
-            .sum()
-            .sort_values("RECAUDO", ascending=True)
-        )
-        df_cart_tot["CARTERA_BOLD"] = df_cart_tot["CARTERA"].apply(
-            lambda x: f"<b>{x}</b>"
+        st.subheader("📊 Peso de Capital y Efectividad por Cartera")
+        st.caption(
+            "El tamaño de cada bloque representa el Capital de la cartera; "
+            "el color representa su % de Efectividad (verde = buena, rojo = crítica)."
         )
 
-        fig_cart_bar = px.bar(
-            df_cart_tot,
-            x="RECAUDO",
-            y="CARTERA_BOLD",
-            orientation="h",
-            text="RECAUDO",
-            title="<b>Recaudo Total por Cartera</b>",
-            color="CARTERA_BOLD",
-            color_discrete_sequence=px.colors.qualitative.Vivid,
-        )
-        fig_cart_bar.update_traces(
-            texttemplate="$ %{x:,.0f} COP",
-            textposition="outside",
-            textfont=dict(size=13, family="Arial Black", color="#0f172a"),
-            cliponaxis=False,
-            hovertemplate="%{y}<br>$ %{x:,.0f} COP<extra></extra>",
-        )
-        fig_cart_bar.update_layout(
-            showlegend=False,
-            xaxis_title="Recaudo (COP)",
-            yaxis_title="",
-            xaxis_tickformat=",.0f",
-            margin=dict(l=20, r=170, t=60, b=20),
-        )
-        st.plotly_chart(fig_cart_bar, use_container_width=True)
+        df_treemap = resumen_por_cartera(df_all)
+        df_treemap = df_treemap[
+            df_treemap["CARTERA"] != "🔷 TOTAL GENERAL"
+        ]
+
+        if df_treemap.empty:
+            st.info("No hay carteras disponibles con los filtros actuales.")
+        else:
+            fig_treemap = px.treemap(
+                df_treemap,
+                path=[px.Constant("Todas las Carteras"), "CARTERA"],
+                values="CAPITAL",
+                color="% EFECTIVIDAD",
+                color_continuous_scale="RdYlGn",
+                range_color=[0, 100],
+            )
+            fig_treemap.update_traces(
+                texttemplate=(
+                    "<b>%{label}</b><br>$ %{value:,.0f} COP"
+                    "<br>%{color:.1f}% efectividad"
+                ),
+                textfont=dict(size=13, family="Arial Black"),
+            )
+            fig_treemap.update_layout(
+                margin=dict(l=10, r=10, t=20, b=10),
+                coloraxis_colorbar=dict(title="% Efectividad"),
+            )
+            st.plotly_chart(fig_treemap, use_container_width=True)
 
         st.markdown("---")
 
@@ -854,27 +1136,40 @@ if st.session_state.rol == "presidencia":
             .sort_values("MES_ORDEN")
         )
 
-        fig_mes = px.bar(
-            df_mes_tot,
-            x="MES_NOMBRE",
-            y=["RECAUDO", "PROYECCION"],
-            barmode="group",
-            category_orders={"MES_NOMBRE": list(MESES_CALENDARIO.keys())},
-            title="<b>Evolución de Recaudo vs Proyección Mes a Mes</b>",
-            color_discrete_map={
-                "RECAUDO": "#2563eb",
-                "PROYECCION": "#f59e0b",
-            },
-        )
+        fig_mes = go.Figure()
+        fig_mes.add_trace(go.Scatter(
+            x=df_mes_tot["MES_NOMBRE"], y=df_mes_tot["CAPITAL"],
+            mode="lines", name="Capital (referencia)",
+            line=dict(color="#94a3b8", width=2, dash="dash"),
+            hovertemplate="Capital: $ %{y:,.0f} COP<extra></extra>",
+        ))
+        fig_mes.add_trace(go.Scatter(
+            x=df_mes_tot["MES_NOMBRE"], y=df_mes_tot["RECAUDO"],
+            mode="lines+markers", name="Recaudo",
+            line=dict(color="#2563eb", width=3),
+            marker=dict(size=7),
+            fill="tozeroy", fillcolor="rgba(37,99,235,0.10)",
+            hovertemplate="Recaudo: $ %{y:,.0f} COP<extra></extra>",
+        ))
+        fig_mes.add_trace(go.Scatter(
+            x=df_mes_tot["MES_NOMBRE"], y=df_mes_tot["PROYECCION"],
+            mode="lines+markers", name="Proyección",
+            line=dict(color="#f59e0b", width=3, dash="dot"),
+            marker=dict(size=7),
+            hovertemplate="Proyección: $ %{y:,.0f} COP<extra></extra>",
+        ))
         fig_mes.update_layout(
+            title="<b>Evolución de Recaudo vs Proyección Mes a Mes</b>",
             xaxis_title="Mes",
             yaxis_title="Valor (COP)",
-            xaxis_tickangle=0,
+            xaxis=dict(
+                categoryorder="array",
+                categoryarray=list(MESES_CALENDARIO.keys()),
+                tickangle=0,
+            ),
             yaxis_tickformat=",.0f",
             hovermode="x unified",
-        )
-        fig_mes.update_traces(
-            hovertemplate="%{fullData.name}: $ %{y:,.0f} COP<extra></extra>"
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         )
         st.plotly_chart(fig_mes, use_container_width=True)
 
@@ -1142,6 +1437,11 @@ elif st.session_state.rol == "admin":
 
     df_all = st.session_state.base_meses_db
 
+    paleta_directores_g = paleta_bold(construir_paleta(df_all["DIRECTOR"]))
+    paleta_carteras_g = paleta_bold(
+        construir_paleta(df_all["CARTERA"], PALETA_CARTERAS_BASE)
+    )
+
     t1, t2, t3, t4 = st.tabs(
         [
             "📈 Dashboard Consolidado",
@@ -1153,27 +1453,36 @@ elif st.session_state.rol == "admin":
 
     with t1:
 
+        st.markdown("##### 🔎 Filtros (aplican a este dashboard)")
+        df_all_t1 = aplicar_filtros_globales(df_all, key_prefix="ger")
+
         m1, m2, m3, m4 = st.columns(4)
 
         m1.metric(
             "Capital Total",
-            formato_pesos(df_all["CAPITAL"].sum()),
+            formato_pesos(df_all_t1["CAPITAL"].sum()),
         )
 
         m2.metric(
             "Total Recaudado",
-            formato_pesos(df_all["RECAUDO"].sum()),
+            formato_pesos(df_all_t1["RECAUDO"].sum()),
         )
 
         m3.metric(
             "Total Proyección",
-            formato_pesos(df_all["PROYECCION"].sum()),
+            formato_pesos(df_all_t1["PROYECCION"].sum()),
         )
 
         m4.metric(
             "Total Clientes",
-            formato_numero(df_all["# CLIENTES"].sum()),
+            formato_numero(df_all_t1["# CLIENTES"].sum()),
         )
+
+        grafico_tendencia_mensual(df_all_t1, meses_atras=6)
+
+        st.markdown("---")
+
+        panel_alertas_gerencia(df_all_t1, umbral_efectividad=30.0)
 
         st.markdown("---")
 
@@ -1181,7 +1490,7 @@ elif st.session_state.rol == "admin":
         st.subheader("📊 Recaudo Total por Cartera")
 
         df_cart = (
-            df_all.groupby("CARTERA", as_index=False)["RECAUDO"]
+            df_all_t1.groupby("CARTERA", as_index=False)["RECAUDO"]
             .sum()
             .sort_values("RECAUDO", ascending=True)
         )
@@ -1196,7 +1505,7 @@ elif st.session_state.rol == "admin":
             orientation="h",
             text="RECAUDO",
             color="CARTERA_BOLD",
-            color_discrete_sequence=px.colors.qualitative.Dark24,
+            color_discrete_map=paleta_carteras_g,
         )
         fig1.update_traces(
             texttemplate="$ %{x:,.0f} COP",
@@ -1220,7 +1529,7 @@ elif st.session_state.rol == "admin":
         with col_g1:
             st.subheader("🏆 Ranking de Recaudo por Director")
             df_dir_g = (
-                df_all.groupby("DIRECTOR", as_index=False)["RECAUDO"]
+                df_all_t1.groupby("DIRECTOR", as_index=False)["RECAUDO"]
                 .sum()
                 .sort_values("RECAUDO", ascending=True)
             )
@@ -1234,7 +1543,7 @@ elif st.session_state.rol == "admin":
                 orientation="h",
                 text="RECAUDO",
                 color="DIRECTOR_BOLD",
-                color_discrete_sequence=PALETA_VIVA,
+                color_discrete_map=paleta_directores_g,
             )
             fig_rank_g.update_traces(
                 texttemplate="$ %{x:,.0f} COP",
@@ -1255,7 +1564,7 @@ elif st.session_state.rol == "admin":
         with col_g2:
             st.subheader("🥧 Participación % por Director")
 
-            df_dir_g_pie = df_all.groupby(
+            df_dir_g_pie = df_all_t1.groupby(
                 "DIRECTOR", as_index=False
             )["RECAUDO"].sum()
             df_dir_g_pie["DIRECTOR_BOLD"] = df_dir_g_pie[
@@ -1267,7 +1576,8 @@ elif st.session_state.rol == "admin":
                 names="DIRECTOR_BOLD",
                 values="RECAUDO",
                 hole=0.4,
-                color_discrete_sequence=PALETA_VIVA,
+                color="DIRECTOR_BOLD",
+                color_discrete_map=paleta_directores_g,
             )
             fig2.update_traces(
                 textposition="inside",
@@ -1282,12 +1592,16 @@ elif st.session_state.rol == "admin":
 
         st.markdown("---")
 
+        grafico_comparativo_capital_cartera(df_all_t1)
+
+        st.markdown("---")
+
         st.subheader(
             "📈 Detalle Mensual de Recaudo por Cartera"
         )
 
         carteras_admin_disp = (
-            df_all["CARTERA"]
+            df_all_t1["CARTERA"]
             .dropna()
             .unique()
             .tolist()
@@ -1302,8 +1616,8 @@ elif st.session_state.rol == "admin":
             )
 
             df_cart_mes_admin = (
-                df_all[
-                    df_all["CARTERA"]
+                df_all_t1[
+                    df_all_t1["CARTERA"]
                     == cartera_admin_sel
                 ]
                 .groupby(
